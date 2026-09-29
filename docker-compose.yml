@@ -1,0 +1,83 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: fleet_timescaledb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: fleet
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fleet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fleet_redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    container_name: fleet_api
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/fleet
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: "*"
+      WS_ALLOWED_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: .
+    container_name: fleet_worker
+    command: ["python", "-m", "workers.position_consumer"]
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/fleet
+      REDIS_URL: redis://redis:6379/0
+
+  reclaimer:
+    build: .
+    container_name: fleet_reclaimer
+    command: ["python", "-m", "workers.reclaimer"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379/0
+
+  simulator:
+    build: .
+    container_name: fleet_simulator
+    command: ["python", "-m", "simulator.run", "--vehicles", "1000", "--rate", "1.0", "--transport", "http", "--url", "http://api:8000/api/v1/positions/batch"]
+    depends_on:
+      - api
+    environment:
+      API_BASE_URL: http://api:8000/api/v1
+
+volumes:
+  timescale_data:
+  redis_data:

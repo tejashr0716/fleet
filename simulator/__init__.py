@@ -1,0 +1,3 @@
+"""Bengaluru vehicle telemetry simulator package."""
+
+from __future__ import annotations

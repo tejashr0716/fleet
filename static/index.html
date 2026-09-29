@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Fleet — Real-Time Vehicle Tracking Platform</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app-root">
+    <!-- Offline demo banner -->
+    <div id="offline-banner" class="offline-banner" role="alert">
+      Demo data — live API is asleep
+    </div>
+
+    <!-- Top Navigation Header -->
+    <header class="nav" role="banner">
+      <div class="brand-section">
+        <span class="brand-title">Fleet</span>
+        <div class="connection-pill" aria-live="polite">
+          <span id="conn-dot" class="status-dot offline"></span>
+          <span id="conn-text" class="mono">Connecting...</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button id="btn-draw-geofence" class="btn-secondary" aria-label="Draw Geofence">
+          + Geofence
+        </button>
+        <button id="btn-toggle-replay" class="btn-secondary" aria-label="Toggle Replay Mode">
+          Replay Mode
+        </button>
+        <a href="https://github.com/tejashr0716/fleet" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="display:inline-flex; align-items:center; gap:6px;">
+          <span>GitHub</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Stat Strip Floating Metrics -->
+    <section class="stat-strip" aria-label="Telemetry Statistics">
+      <div class="stat-tile">
+        <div class="stat-label">Live Vehicles</div>
+        <div id="stat-vehicles" class="stat-value mono">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Positions / Sec</div>
+        <div id="stat-rate" class="stat-value mono">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Active Alerts</div>
+        <div id="stat-alerts" class="stat-value mono">0</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">E2E p95 Latency</div>
+        <div id="stat-latency" class="stat-value mono">-- ms</div>
+      </div>
+    </section>
+
+    <!-- Leaflet Map Full Bleed -->
+    <main id="map" role="application" aria-label="Live Fleet Tracking Map"></main>
+
+    <!-- Floating Alerts Feed Panel -->
+    <aside class="panel alerts-panel" aria-label="Live Alerts Feed">
+      <div class="panel-header">
+        <span>Alerts Feed</span>
+        <span id="alert-badge" class="mono" style="color:var(--danger)">0</span>
+      </div>
+      <div id="alerts-list" class="alerts-list" role="feed"></div>
+    </aside>
+
+    <!-- Vehicle Details Drawer -->
+    <div id="vehicle-drawer" class="panel vehicle-drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title">
+      <div class="panel-header">
+        <span id="drawer-title" class="mono">Vehicle #</span>
+        <button id="drawer-close" aria-label="Close vehicle drawer" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:18px;">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span class="stat-label">Current Speed</span>
+            <span id="drawer-speed" class="mono">0 km/h</span>
+          </div>
+          <canvas id="speed-sparkline" class="sparkline-canvas" width="320" height="60"></canvas>
+        </div>
+        <div>
+          <div class="stat-label" style="margin-bottom:8px;">Recent Trips</div>
+          <div id="drawer-trips" class="mono" style="font-size:12px; display:flex; flex-direction:column; gap:6px;">
+            <div style="color:var(--fg-subtle);">No recent trips recorded.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Replay Bar (scrubber) -->
+    <footer id="replay-bar" class="replay-bar" style="display:none;" aria-label="History Replay Controller">
+      <button id="replay-play" class="btn-primary" style="padding:4px 10px;">Play</button>
+      <input type="range" id="replay-slider" class="replay-slider" min="0" max="100" value="0" />
+      <select id="replay-speed" class="btn-secondary" style="padding:4px 8px;">
+        <option value="1">1x</option>
+        <option value="10">10x</option>
+        <option value="60">60x</option>
+      </select>
+      <span id="replay-time" class="mono" style="font-size:11px; color:var(--fg-muted);">--:--</span>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="./config.js"></script>
+  <script src="./map.js"></script>
+  <script src="./live.js"></script>
+  <script src="./panels.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
