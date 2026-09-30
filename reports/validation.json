@@ -57,11 +57,40 @@
   "portable_configuration": {
     "compose_yaml": "parsed",
     "docker_container_startup": "not executed in this environment",
-    "github_actions": "configured but not run because publishing lacks write permissions"
+    "github_actions": "passed on branch, pull request and merged main using PostgreSQL 16 and Redis 7 service containers"
   },
   "publication": {
-    "repository_changed": false,
-    "pages_changed": false,
-    "blocker": "GitHub MCP write action returned 403"
-  }
+    "repository_changed": true,
+    "pages_changed": true,
+    "public_url": "https://tejashr0716.github.io/fleet/",
+    "pull_request_url": "https://github.com/tejashr0716/fleet/pull/1",
+    "application_release_revision": "df2f2be377dac8a4dbc10ee80f5421b92383a4c6",
+    "original_backup_branch": "backup/fleet-before-rebuild-2026-09-30",
+    "original_backup_revision": "7882ded6b3b661c7bf35ede3cdca39424a7c9d14",
+    "ci_run_urls": [
+      "https://github.com/tejashr0716/fleet/actions/runs/36735369129",
+      "https://github.com/tejashr0716/fleet/actions/runs/36735774754",
+      "https://github.com/tejashr0716/fleet/actions/runs/36736065202"
+    ],
+    "pages_run_url": "https://github.com/tejashr0716/fleet/actions/runs/36736065061",
+    "uploaded_source_files_verified": 103,
+    "public_assets_checked": 14,
+    "public_asset_checksum_matches": 14,
+    "public_browser_smoke": {
+      "cab_filter_count": 4,
+      "no_match_search_count": 0,
+      "pause_resume": true,
+      "route_control": true,
+      "connection_dialog": true,
+      "allVehicles": 12,
+      "applicationErrors": [],
+      "dialogClosed": true,
+      "leafletTilesLoaded": 9,
+      "noHorizontalOverflow": true
+    },
+    "hosted_backend": "not provisioned; Pages is explicitly labeled browser simulation",
+    "publication_method": "user-approved GitHub browser; MCP reads succeeded but write calls returned 403",
+    "report_scope": "Application release and public assets were verified at the revision above; this report and checksum manifest were updated afterward."
+  },
+  "publication_verified_at": "2026-09-30T15:25:41.899295+00:00"
 }
