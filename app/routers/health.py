@@ -25,7 +25,11 @@ async def health(request: Request):
         redis = bool(await request.app.state.redis.ping())
     except Exception:
         pass
-    state = "healthy" if database and redis else ("degraded" if database else "unavailable")
+    demo_enabled = request.app.state.settings.cloud_demo_enabled
+    worker = request.app.state.cloud_worker
+    worker_running = worker is not None and not worker.done()
+    healthy = database and redis and (not demo_enabled or worker_running)
+    state = "healthy" if healthy else ("degraded" if database else "unavailable")
     return JSONResponse(
         status_code=200 if database else 503,
         content={
@@ -38,5 +42,7 @@ async def health(request: Request):
             "sample_data": True,
             "schema_version": "fleet_v2",
             "speed_limit_kmh": request.app.state.settings.speed_limit_kmh,
+            "cloud_demo": demo_enabled,
+            "demo_worker_running": worker_running,
         },
     )

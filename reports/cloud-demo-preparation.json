@@ -1,0 +1,42 @@
+{
+  "feature_version": "2.1.0",
+  "prepared_at": "2026-09-30T17:30:16.005282+00:00",
+  "base_revision": "744204e884d06a2041bdbac65c71649bc60ca1b1",
+  "mode": "optional one-service API/outbox-worker demo; normal Compose mode unchanged",
+  "local_verification": {
+    "unit_tests_passed": 13,
+    "style": "ruff check and format passed",
+    "javascript": "node syntax checks passed",
+    "mocked_browser_controls": {
+      "scope": "UI-only validation with intercepted mock API and WebSocket; NOT real backend evidence",
+      "checks": 11,
+      "passed": [
+        "cloud control hidden in browser simulation",
+        "cloud control appears only after live connection advertises the mode",
+        "password cleared after connection",
+        "start sends a 300-second request and changes control to stop",
+        "desktop cloud mode has no horizontal overflow",
+        "stop restores start control",
+        "return to browser simulation hides cloud controls",
+        "no tokens or credentials persisted",
+        "390px mobile cloud mode has no horizontal overflow",
+        "mobile start and stop are actionable",
+        "no application runtime errors during mocked UI checks"
+      ],
+      "applicationErrors": []
+    },
+    "image_preview": "Screenshot files captured; image-preview helper unavailable. Automated viewport/control checks passed."
+  },
+  "service_integration_tests": "five new integration tests pending GitHub CI; previous released backend suite had 36 passing tests",
+  "limits": {
+    "default_session_seconds": 300,
+    "maximum_session_seconds": 600,
+    "starts_per_process_hour": 3,
+    "maximum_active_sessions": 1,
+    "default_builtin_synthetic_position_budget": 50000
+  },
+  "render_resources_created": 0,
+  "hosting_status": "prepared, not deployed",
+  "billing_status": "provider controls must be inspected; free compute does not guarantee no usage overages",
+  "route_interpolation": "negative first-tick wraparound corrected and regression-tested"
+}

@@ -1,4 +1,4 @@
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     live_ttl_seconds: int = 30
     speed_limit_kmh: float = 80
     outbox_poll_seconds: float = 0.2
+    cloud_demo_enabled: bool = False
+    cloud_demo_position_budget: int = Field(default=50_000, ge=12, le=100_000)
 
     @property
     def origins(self) -> list[str]:

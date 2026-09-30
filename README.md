@@ -173,3 +173,7 @@ Use [resume evidence](docs/resume-evidence.md) only after running, reviewing and
 - `tests/`: real dependency integration plus pure-rule unit tests.
 - `docs/`: architecture, interview answers, demo walkthrough, evidence and deployment limits.
 - `reports/`: verification context; no invented performance data.
+
+## Optional temporary free-tier cloud demo
+
+Version 2.1 adds an optional one-service API/worker runner and an authenticated, time-limited **Start sample GPS** control. The normal Docker workflow is unchanged. This is a temporary demonstration, not always-on production hosting. See [the complete Render free-demo guide](docs/render-free-demo.md), including the 30-day database expiration and shared usage/billing limits. Resource provisioning and billing controls must be confirmed separately; a prepared configuration does not mean a live backend has been deployed.

@@ -13,14 +13,15 @@ from app.services.geofence import distance_m
 
 def route_point(route, tick):
     segment = tick / 120
-    a = route[int(segment) % (len(route) - 1)]
-    b = route[(int(segment) % (len(route) - 1)) + 1]
+    index = math.floor(segment) % (len(route) - 1)
+    a = route[index]
+    b = route[index + 1]
     f = segment % 1
     return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]
 
 
-async def run(args):
-    settings = Settings()
+async def run(args, settings=None):
+    settings = settings or Settings()
     routes = json.loads((Path(__file__).parent / "routes.json").read_text())["routes"]
     async with httpx.AsyncClient(base_url=args.url.rstrip("/"), timeout=10) as client:
         res = await client.post(

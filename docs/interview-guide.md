@@ -83,3 +83,7 @@ The checked demo seeds 12 synthetic vehicles. Do not answer with a larger number
 7. Explain one deliberately omitted feature and what would justify it.
 
 Do these yourself before claiming you can maintain the project in an interview.
+
+## Why does the free cloud demo share API and worker compute?
+
+Render's free tier cannot host a separate background worker. The optional demo mode starts the existing outbox consumer as a lifespan-managed task inside one Uvicorn process. It is explicitly an interview-demo compromise, not a production scaling design. Normal Docker mode still has separate services. The GPS control is authenticated, time-limited and off until requested; its synthetic samples travel through the same real HTTP, PostgreSQL, Redis and WebSocket path. Explain both the compromise and the free database's 30-day expiration.

@@ -1,7 +1,7 @@
 import {state,el,listeners,changed,acceptPosition,addAlert,toast} from "./config.js";
 import {initializeMap,renderMap,fitFleet,showFences,showTrace,clearTrace} from "./map.js";
 import {initializePanels,renderPanels} from "./panels.js";
-import {connect,disconnect,api} from "./live.js";
+import {connect,disconnect,api,refreshCloudDemo} from "./live.js";
 let routes=[],timer=null,tick=0;
 function routePoint(route,step){const part=step/120,seg=Math.floor(part)%(route.length-1),f=part%1;return {lat:route[seg][0]+(route[seg+1][0]-route[seg][0])*f,lon:route[seg][1]+(route[seg+1][1]-route[seg][1])*f};}
 function simulate() {
@@ -27,6 +27,10 @@ async function main() {
   startSimulation();timer=setInterval(()=>{if(state.mode==="simulation"&&!state.paused)simulate();else changed();},1000);
   el("pause-simulation").addEventListener("click",()=>{state.paused=!state.paused;el("pause-simulation").textContent=state.paused?"Resume simulation":"Pause simulation";el("mode-subtitle").textContent=state.paused?"Paused • synthetic GPS data":"Synthetic GPS • no live backend";});
   el("return-demo").addEventListener("click",startSimulation);
+  el("cloud-gps-button")?.addEventListener("click",async()=>{
+    if(state.mode!=="live"||!state.cloudDemo)return;const button=el("cloud-gps-button");button.disabled=true;
+    try{const stopping=state.cloudGPSRunning;await api(stopping?"/demo/stop":"/demo/start",{method:"POST",body:stopping?undefined:JSON.stringify({duration_seconds:300})});await refreshCloudDemo();toast(stopping?"Sample GPS stopped. Stored observations remain in PostgreSQL.":"Five-minute synthetic GPS session started through the real backend.");}catch(error){toast(error.message);}finally{button.disabled=false;}
+  });
   el("show-history").addEventListener("click",async()=>{
     try{let points=state.histories.get(state.selected)||[];if(state.mode==="live"){const result=await api(`/vehicles/${state.selected}/positions?limit=200`);points=result.points;state.histories.set(state.selected,points);el("history-context").textContent=`${points.length} stored PostgreSQL observations${result.has_more?"; most recent 200 shown":""}. No map matching or fabricated traces.`;}else{el("history-context").textContent=`${points.length} synthetic browser observations. These are not persisted in PostgreSQL.`;}if(points.length<2){toast("Wait for two observed positions first.");return;}showTrace(points);changed();}catch(error){toast(error.message);}
   });
@@ -34,7 +38,7 @@ async function main() {
     const point=state.positions.get(state.selected);if(!point){toast("No position available yet.");return;}
     try{if(state.mode==="live"){const result=await api(`/fleet/nearest?lat=${point.lat}&lon=${point.lon}&limit=5`);const text=result.positions.map(p=>`${state.vehicles.find(v=>v.id===p.vehicle_id)?.name||p.vehicle_id}: ${p.distance_m} m`).join("; ");toast(`${result.source_used}: ${text||"no fresh vehicles within 25 km"}`);}else{toast("Simulation only. Connect the backend to demonstrate Redis GEO nearest-vehicle queries and PostgreSQL fallback.");}}catch(error){toast(error.message);}
   });
-  el("connect-button").addEventListener("click",()=>{el("api-origin").value=state.apiBase||(["localhost","127.0.0.1"].includes(location.hostname)&&location.port==="8000"?location.origin:"");el("login-user").value="admin";el("login-password").value="";el("connect-error").hidden=true;el("connect-dialog").showModal();});
+  el("connect-button").addEventListener("click",()=>{el("api-origin").value=state.apiBase||(location.pathname.startsWith("/static/")?location.origin:"");el("login-user").value="admin";el("login-password").value="";el("connect-error").hidden=true;el("connect-dialog").showModal();});
   el("close-dialog").addEventListener("click",()=>el("connect-dialog").close());
   el("connect-form").addEventListener("submit",async event=>{event.preventDefault();el("submit-connect").disabled=true;el("connect-error").hidden=true;try{await connect(el("api-origin").value,el("login-user").value,el("login-password").value);el("login-password").value="";el("connect-dialog").close();fitFleet();toast("Connected. The GPS source is synthetic, but the backend data flow is real.");}catch(error){el("connect-error").textContent=error instanceof TypeError?"API connection failed. Check that the backend is running and this page origin is included in ALLOWED_ORIGINS. For localhost, open the dashboard served by the API at port 8000.":error.message;el("connect-error").hidden=false;}finally{el("submit-connect").disabled=false;}});
   addEventListener("pagehide",()=>{clearInterval(timer);disconnect();});

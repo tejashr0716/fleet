@@ -31,7 +31,7 @@ class System:
 
 
 @pytest_asyncio.fixture
-async def system():
+async def system(request):
     url = os.getenv(
         "TEST_DATABASE_URL",
         os.getenv("DATABASE_URL", "postgresql+asyncpg://fleet:fleet@localhost:5432/fleet_test"),
@@ -39,7 +39,13 @@ async def system():
     redis_url = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/1")
     if not url.split("?")[0].endswith("/fleet_test") or not redis_url.endswith("/1"):
         raise RuntimeError("Tests refuse to reset any database except fleet_test and Redis DB 1")
-    settings = Settings(_env_file=None, environment="test", database_url=url, redis_url=redis_url)
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=url,
+        redis_url=redis_url,
+        cloud_demo_enabled=getattr(request, "param", False),
+    )
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         async with app.state.db.engine.begin() as conn:
