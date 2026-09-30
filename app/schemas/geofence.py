@@ -1,45 +1,14 @@
-"""Geofence request and response schemas."""
+from pydantic import Field
 
-from __future__ import annotations
-
-from datetime import datetime
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
-
-from app.models.geofence import GeofenceEventKind, GeofenceKind
+from app.schemas.common import Schema
 
 
-class GeofenceCreate(BaseModel):
-    """Schema for registering a new geofence boundary."""
-
-    name: str = Field(min_length=3, max_length=64)
-    kind: GeofenceKind = GeofenceKind.POLYGON
-    geojson: dict[str, Any]
-    h3_resolution: int = Field(default=8, ge=6, le=10)
+class GeofenceCreate(Schema):
+    name: str = Field(min_length=1, max_length=60, pattern=r"^[\w -]+$")
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    radius_m: float = Field(ge=100, le=20000)
 
 
-class GeofenceRead(BaseModel):
-    """Serialized geofence record with polyfilled H3 cells."""
-
-    model_config = ConfigDict(from_attributes=True)
-
+class GeofenceOut(GeofenceCreate):
     id: int
-    name: str
-    kind: GeofenceKind
-    geojson: dict[str, Any]
-    h3_resolution: int
-    h3_cells: list[int]
-    created_at: datetime
-
-
-class GeofenceEventRead(BaseModel):
-    """Serialized geofence transition event."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    vehicle_id: int
-    geofence_id: int
-    event: GeofenceEventKind
-    time: datetime

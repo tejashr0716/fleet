@@ -1,36 +1,21 @@
-.PHONY: up down migrate seed sim test bench lint format clean
-
+.PHONY: setup up down logs test lint migrate seed sim bench
+setup:
+	python scripts/setup.py
 up:
-	docker compose up -d timescaledb redis api worker reclaimer
-
+	docker compose --profile demo up --build -d
 down:
-	docker compose down
-
-migrate:
-	docker compose exec api alembic upgrade head
-
-seed:
-	docker compose exec api python -c "import asyncio; from app.db import AsyncSessionLocal; from app.models.vehicle import Vehicle, VehicleType, VehicleStatus; async def s():\n    async with AsyncSessionLocal() as ses:\n        ses.add_all([Vehicle(plate=f'KA-01-FL-{i:04d}', label=f'Fleet #{i}', vehicle_type=VehicleType.CAR, status=VehicleStatus.ACTIVE) for i in range(1, 1001)])\n        await ses.commit()\nasyncio.run(s())"
-
-sim:
-	docker compose up -d simulator
-
+	docker compose --profile demo down
+logs:
+	docker compose logs -f api worker simulator
 test:
-	pytest -v tests/
-
-bench:
-	python benchmark/ingest_load.py
-	python benchmark/e2e_latency.py
-	python benchmark/query_bench.py
-
+	pytest -q
 lint:
-	ruff check .
-	ruff format --check .
-
-format:
-	ruff format .
-	ruff check --fix .
-
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	rm -rf .pytest_cache .ruff_cache
+	ruff check . && ruff format --check .
+migrate:
+	alembic upgrade head
+seed:
+	python -m simulator.seed
+sim:
+	python -m simulator.run --url http://localhost:8000 --trigger-alerts
+bench:
+	python -m benchmark.ingest_load --url http://localhost:8000

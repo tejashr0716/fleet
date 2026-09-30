@@ -1,41 +1,22 @@
-"""Asynchronous database engine and session dependency."""
-
-from __future__ import annotations
-
-from collections.abc import AsyncGenerator
-
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from app.config import settings
-
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
-)
-
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+from sqlalchemy import MetaData
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Provide a scoped transactional asynchronous database session.
+# A separate schema preserves any old prototype's public-schema tables.
+class Base(DeclarativeBase):
+    metadata = MetaData(schema="fleet_v2")
 
-    Yields:
-        AsyncSession: Scoped SQLAlchemy async session.
-    """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+
+class Database:
+    def __init__(self, url: str):
+        self.engine = create_async_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=10)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def close(self):
+        await self.engine.dispose()
+
+
+async def get_session(request):
+    async with request.app.state.db.sessions() as session:
+        yield session

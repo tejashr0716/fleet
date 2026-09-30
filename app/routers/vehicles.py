@@ -1,71 +1,76 @@
-"""Vehicles router handling asset lookups, telemetry history, and trips."""
+from datetime import UTC, datetime, timedelta
 
-from __future__ import annotations
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from typing import Annotated
+from app.repositories import position_repo, trip_repo, vehicle_repo
+from app.schemas.trip import TripOut
+from app.schemas.vehicle import VehicleCreate, VehicleOut
+from app.security import require_user
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db import get_db_session
-from app.errors import NotFoundError
-from app.repositories.position_repo import PositionRepository
-from app.repositories.trip_repo import TripRepository
-from app.repositories.vehicle_repo import VehicleRepository
-from app.schemas.position import PositionHistoryFilter, PositionHistoryResponse
-from app.schemas.trip import TripRead
-from app.schemas.vehicle import VehicleFilters, VehicleRead
-
-router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
+router = APIRouter(prefix="/vehicles", tags=["Vehicles"], dependencies=[Depends(require_user)])
 
 
-@router.get("", response_model=list[VehicleRead])
-async def list_vehicles(
-    filters: Annotated[VehicleFilters, Depends()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> list[VehicleRead]:
-    """Retrieve filtered and paginated list of vehicles."""
-    repo = VehicleRepository(db)
-    vehicles = await repo.list_vehicles(filters)
-    return [VehicleRead.model_validate(v) for v in vehicles]
+@router.get("", response_model=list[VehicleOut])
+async def list_vehicles(request: Request):
+    async with request.app.state.db.sessions() as session:
+        return await vehicle_repo.list_vehicles(session)
 
 
-@router.get("/{vehicle_id}", response_model=VehicleRead)
-async def get_vehicle(
+@router.post("", status_code=201, response_model=VehicleOut)
+async def create_vehicle(body: VehicleCreate, request: Request):
+    async with request.app.state.db.sessions() as session:
+        return await vehicle_repo.create_vehicle(session, body)
+
+
+@router.get("/{vehicle_id}", response_model=VehicleOut)
+async def vehicle(vehicle_id: int, request: Request):
+    async with request.app.state.db.sessions() as session:
+        return await vehicle_repo.get_vehicle(session, vehicle_id)
+
+
+def window(from_time, to_time):
+    now = datetime.now(UTC)
+    start, stop = from_time or now - timedelta(hours=1), to_time or now
+    if start.tzinfo is None or stop.tzinfo is None:
+        raise HTTPException(422, "History timestamps require a timezone")
+    if stop < start or stop - start > timedelta(days=90):
+        raise HTTPException(422, "Use a non-reversed history window of at most 90 days")
+    return start, stop
+
+
+@router.get("/{vehicle_id}/positions")
+async def positions(
     vehicle_id: int,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> VehicleRead:
-    """Retrieve details for a single vehicle by ID."""
-    repo = VehicleRepository(db)
-    vehicle = await repo.get_by_id(vehicle_id)
-    if not vehicle:
-        raise NotFoundError("Vehicle", vehicle_id)
-    return VehicleRead.model_validate(vehicle)
+    request: Request,
+    from_time: datetime | None = Query(None, alias="from"),
+    to_time: datetime | None = Query(None, alias="to"),
+    limit: int = Query(200, ge=1, le=5000),
+):
+    start, stop = window(from_time, to_time)
+    async with request.app.state.db.sessions() as session:
+        await vehicle_repo.get_vehicle(session, vehicle_id)
+        points, more = await position_repo.history(session, vehicle_id, start, stop, limit)
+        return {
+            "points": [position_repo.position_dict(p) for p in points],
+            "has_more": more,
+            "source_used": "postgresql",
+            "window": {"from": start, "to": stop},
+        }
 
 
-@router.get("/{vehicle_id}/positions", response_model=PositionHistoryResponse)
-async def get_vehicle_positions(
+@router.get("/{vehicle_id}/trips")
+async def trips(
     vehicle_id: int,
-    filters: Annotated[PositionHistoryFilter, Depends()],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> PositionHistoryResponse:
-    """Retrieve historical positions using raw hypertable or continuous aggregates."""
-    repo = PositionRepository(db)
-    source, points = await repo.get_history(
-        vehicle_id=vehicle_id,
-        from_time=filters.from_time,
-        to_time=filters.to_time,
-        mode=filters.downsample,
-    )
-    return PositionHistoryResponse(source_used=source, points=points)
-
-
-@router.get("/{vehicle_id}/trips", response_model=list[TripRead])
-async def get_vehicle_trips(
-    vehicle_id: int,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> list[TripRead]:
-    """Retrieve recent completed trip intervals for a vehicle."""
-    repo = TripRepository(db)
-    trips = await repo.list_by_vehicle(vehicle_id)
-    return [TripRead.model_validate(t) for t in trips]
+    request: Request,
+    from_time: datetime | None = Query(None, alias="from"),
+    to_time: datetime | None = Query(None, alias="to"),
+):
+    start, stop = window(from_time, to_time)
+    async with request.app.state.db.sessions() as session:
+        await vehicle_repo.get_vehicle(session, vehicle_id)
+        rows, truncated = await trip_repo.trace_sessions(session, vehicle_id, start, stop)
+        return {
+            "sessions": [TripOut.model_validate(p) for p in rows],
+            "truncated": truncated,
+            "definition": "Observed GPS sessions split by a 5-minute silence gap",
+        }

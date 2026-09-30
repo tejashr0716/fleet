@@ -1,115 +1,28 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Fleet — Real-Time Vehicle Tracking Platform</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <link rel="stylesheet" href="./styles.css" />
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Fleet: an honest synthetic GPS showcase with a connectable FastAPI, PostgreSQL and Redis backend.">
+<title>Fleet — Vehicle Tracking</title>
+<link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="styles.css">
+<script defer src="vendor/leaflet.js"></script><script defer src="vendor/chart.umd.js"></script>
+<script type="module" src="app.js"></script>
 </head>
 <body>
-  <div id="app-root">
-    <!-- Offline demo banner -->
-    <div id="offline-banner" class="offline-banner" role="alert">
-      Demo data — live API is asleep
-    </div>
-
-    <!-- Top Navigation Header -->
-    <header class="nav" role="banner">
-      <div class="brand-section">
-        <span class="brand-title">Fleet</span>
-        <div class="connection-pill" aria-live="polite">
-          <span id="conn-dot" class="status-dot offline"></span>
-          <span id="conn-text" class="mono">Connecting...</span>
-        </div>
-      </div>
-      <div class="nav-actions">
-        <button id="btn-draw-geofence" class="btn-secondary" aria-label="Draw Geofence">
-          + Geofence
-        </button>
-        <button id="btn-toggle-replay" class="btn-secondary" aria-label="Toggle Replay Mode">
-          Replay Mode
-        </button>
-        <a href="https://github.com/tejashr0716/fleet" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="display:inline-flex; align-items:center; gap:6px;">
-          <span>GitHub</span>
-        </a>
-      </div>
-    </header>
-
-    <!-- Stat Strip Floating Metrics -->
-    <section class="stat-strip" aria-label="Telemetry Statistics">
-      <div class="stat-tile">
-        <div class="stat-label">Live Vehicles</div>
-        <div id="stat-vehicles" class="stat-value mono">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Positions / Sec</div>
-        <div id="stat-rate" class="stat-value mono">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Active Alerts</div>
-        <div id="stat-alerts" class="stat-value mono">0</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">E2E p95 Latency</div>
-        <div id="stat-latency" class="stat-value mono">-- ms</div>
-      </div>
-    </section>
-
-    <!-- Leaflet Map Full Bleed -->
-    <main id="map" role="application" aria-label="Live Fleet Tracking Map"></main>
-
-    <!-- Floating Alerts Feed Panel -->
-    <aside class="panel alerts-panel" aria-label="Live Alerts Feed">
-      <div class="panel-header">
-        <span>Alerts Feed</span>
-        <span id="alert-badge" class="mono" style="color:var(--danger)">0</span>
-      </div>
-      <div id="alerts-list" class="alerts-list" role="feed"></div>
-    </aside>
-
-    <!-- Vehicle Details Drawer -->
-    <div id="vehicle-drawer" class="panel vehicle-drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title">
-      <div class="panel-header">
-        <span id="drawer-title" class="mono">Vehicle #</span>
-        <button id="drawer-close" aria-label="Close vehicle drawer" style="background:none;border:none;color:var(--fg);cursor:pointer;font-size:18px;">&times;</button>
-      </div>
-      <div class="drawer-body">
-        <div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-            <span class="stat-label">Current Speed</span>
-            <span id="drawer-speed" class="mono">0 km/h</span>
-          </div>
-          <canvas id="speed-sparkline" class="sparkline-canvas" width="320" height="60"></canvas>
-        </div>
-        <div>
-          <div class="stat-label" style="margin-bottom:8px;">Recent Trips</div>
-          <div id="drawer-trips" class="mono" style="font-size:12px; display:flex; flex-direction:column; gap:6px;">
-            <div style="color:var(--fg-subtle);">No recent trips recorded.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Replay Bar (scrubber) -->
-    <footer id="replay-bar" class="replay-bar" style="display:none;" aria-label="History Replay Controller">
-      <button id="replay-play" class="btn-primary" style="padding:4px 10px;">Play</button>
-      <input type="range" id="replay-slider" class="replay-slider" min="0" max="100" value="0" />
-      <select id="replay-speed" class="btn-secondary" style="padding:4px 8px;">
-        <option value="1">1x</option>
-        <option value="10">10x</option>
-        <option value="60">60x</option>
-      </select>
-      <span id="replay-time" class="mono" style="font-size:11px; color:var(--fg-muted);">--:--</span>
-    </footer>
-  </div>
-
-  <!-- Scripts -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="./config.js"></script>
-  <script src="./map.js"></script>
-  <script src="./live.js"></script>
-  <script src="./panels.js"></script>
-  <script src="./app.js"></script>
-</body>
-</html>
+<header class="topbar"><a class="brand" href="./index.html" aria-label="Fleet home"><span class="brand-mark">F</span> Fleet <span class="brand-context">Vehicle tracking</span></a><nav aria-label="Project"><a id="docs-link" href="https://github.com/tejashr0716/fleet#readme" target="_blank" rel="noopener">Setup & docs ↗</a><a href="https://github.com/tejashr0716/fleet" target="_blank" rel="noopener">Source ↗</a><button id="connect-button" class="primary">Connect live API</button></nav></header>
+<main>
+<section class="heading"><div><p class="eyebrow">FLEET OPERATIONS / BENGALURU</p><h1>A clearer view of your fleet.</h1><p class="subtitle">Positions, history and alerts in one workspace.</p></div><div class="mode-label"><span id="mode-dot" class="dot warning"></span><strong id="mode-name">Browser simulation</strong><span id="mode-subtitle">Synthetic GPS • no live backend</span></div></section>
+<section id="source-banner" class="notice" role="status"><span class="notice-icon">i</span><p id="source-explanation"><strong>This is sample data, not live vehicle telemetry.</strong> The public showcase runs in your browser. Connect a running backend to demonstrate FastAPI, PostgreSQL and Redis.</p><button id="return-demo" class="quiet" hidden>Use sample data</button></section>
+<section class="summary" aria-label="Fleet summary"><div class="summary-item"><span>Registered vehicles</span><strong id="stat-total">—</strong></div><div class="summary-item"><span>Moving now</span><strong id="stat-moving">—</strong></div><div class="summary-item"><span>Stale signals</span><strong id="stat-stale">—</strong></div><div class="summary-item"><span>Data source</span><strong id="stat-source" class="text-stat">Browser fixtures</strong></div></section>
+<div class="workspace">
+<aside class="panel fleet-panel" aria-labelledby="fleet-title"><div class="panel-heading"><h2 id="fleet-title">Vehicles</h2><span id="list-count" class="small muted">12 total</span></div><label for="vehicle-search" class="sr-only">Search vehicles by name or registration</label><input id="vehicle-search" class="search" placeholder="Search vehicles…" type="search"><div class="filter-row" role="group" aria-label="Vehicle type"><button class="filter active" data-kind="all" aria-pressed="true">All</button><button class="filter" data-kind="delivery" aria-pressed="false">Delivery</button><button class="filter" data-kind="cab" aria-pressed="false">Cab</button><button class="filter" data-kind="bus" aria-pressed="false">Bus</button></div><div id="vehicle-list" class="vehicle-list" aria-label="Choose a vehicle"></div><p class="panel-foot">Signals become stale after <span id="ttl-label">30</span> seconds without a new position.</p></aside>
+<section class="map-section panel" aria-labelledby="map-title"><div class="panel-heading map-heading"><div><h2 id="map-title">Fleet map</h2><p class="small muted" id="map-context">Illustrative Bengaluru paths</p></div><button id="fit-map" class="quiet">Fit fleet</button></div><div id="map" role="region" aria-label="Vehicle map; use the vehicle list for a text alternative"></div><p id="tile-warning" class="tile-warning" hidden>Basemap unavailable. Vehicle coordinates and route traces are still plotted.</p><div class="map-toolbar"><div class="legend"><span class="legend-point"></span><span>Vehicle position</span><span class="legend-circle"></span><span>Demo geofence</span></div><button id="pause-simulation" class="quiet">Pause simulation</button></div></section>
+<aside class="panel detail-panel" aria-labelledby="detail-title"><div class="panel-heading"><div><p class="eyebrow">SELECTED VEHICLE</p><h2 id="detail-title">Fleet 01</h2></div><span id="detail-kind" class="tag">Delivery</span></div><p id="detail-registration" class="muted small">DEMO-001</p><div class="speed-block"><div><strong id="detail-speed">—</strong><span>km/h</span></div><span id="detail-status" class="tag">Waiting</span></div><dl class="position-facts"><div><dt>Last update</dt><dd id="detail-last">—</dd></div><div><dt>Coordinates</dt><dd id="detail-coordinates">—</dd></div><div><dt>Heading</dt><dd id="detail-heading">—</dd></div></dl><div class="chart-heading"><h3>Observed speed</h3><span class="small muted">km/h</span></div><p id="chart-summary" class="sr-only">Waiting for speed observations.</p><div class="chart-wrap"><canvas id="speed-chart" role="img" aria-label="Observed vehicle speed over time">Use the speed observations table below.</canvas><p id="chart-empty" class="chart-empty">Waiting for two observations…</p></div><details class="values-details"><summary>Speed observations</summary><div class="table-scroll"><table><caption class="sr-only">Exact observed speed values</caption><thead><tr><th scope="col">Time</th><th scope="col">km/h</th></tr></thead><tbody id="speed-values"></tbody></table></div></details><button id="show-history" class="secondary full">Show observed route</button><button id="nearest-button" class="quiet full">Find nearest vehicles</button><p id="history-context" class="small muted">No fabricated performance numbers. History uses observed samples only.</p></aside>
+</div>
+<section class="bottom-grid"><div class="panel alerts-panel"><div class="panel-heading"><div><h2>Recent alerts</h2><p class="small muted">Threshold-based rules, not machine learning</p></div><span id="alert-count" class="small muted">0 alerts</span></div><div id="alert-list" class="alert-list"><p class="empty">No alert events yet. The simulator includes a deliberate speeding fixture.</p></div></div><div class="panel pipeline-panel"><div class="panel-heading"><h2>The backend behind the map</h2><span id="pipeline-status" class="tag">Not connected</span></div><ol class="pipeline"><li><span>01</span><div><strong>FastAPI + JWT</strong><p>Validate telemetry; authenticate viewers and devices.</p></div></li><li><span>02</span><div><strong>PostgreSQL</strong><p>Commit GPS history and its outbox event together.</p></div></li><li><span>03</span><div><strong>Redis + WebSockets</strong><p>Cache current locations; broadcast to connected viewers.</p></div></li></ol><p class="panel-foot" id="pipeline-note">Simulation bypasses this pipeline. Use Connect live API to test the real services.</p></div></section>
+<footer><span>Fleet / Backend engineering project</span><span id="clock-label">All GPS timestamps stored in UTC</span></footer>
+</main>
+<dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><h2>Connect a live backend</h2><button type="button" id="close-dialog" class="icon-button" aria-label="Close connection dialog">×</button></div><p class="muted">Run the Docker setup first, then enter the credentials from your local .env file. Tokens stay in memory, never in browser storage.</p><label for="api-origin">Backend origin</label><input id="api-origin" type="url" placeholder="http://localhost:8000" required autocomplete="url"><label for="login-user">Username</label><input id="login-user" type="text" autocomplete="username" required><label for="login-password">Password</label><input id="login-password" type="password" autocomplete="current-password" required><p id="connect-error" class="error" role="alert" hidden></p><button id="submit-connect" class="primary full" type="submit">Connect & sign in</button><p class="small muted">Only localhost may use HTTP. Remote connections must use HTTPS.</p></form></dialog>
+<div id="toast" role="status" class="toast" hidden></div>
+<noscript><p class="notice">JavaScript is required for this interactive demo. Source and setup instructions are available on GitHub.</p></noscript>
+</body></html>

@@ -1,89 +1,60 @@
-"""Standard application exception types and single-envelope error serialization."""
+import logging
 
-from __future__ import annotations
-
-import contextvars
-from typing import Any
-
-from fastapi import Request
+from fastapi import HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
 
-# Context variable preserving the current request ID across async tasks for structured logging
-request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "request_id_ctx", default="system"
-)
-
-
-class AppError(Exception):
-    """Base application exception for standardized error envelopes."""
-
-    def __init__(
-        self,
-        code: str,
-        message: str,
-        status_code: int = 400,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.status_code = status_code
-        self.details = details or {}
+logger = logging.getLogger("fleet")
 
 
-class NotFoundError(AppError):
-    """Raised when a requested resource is absent in the database."""
-
-    def __init__(self, resource: str, identifier: Any) -> None:
-        super().__init__(
-            code="NOT_FOUND",
-            message=f"{resource} '{identifier}' was not found",
-            status_code=404,
-            details={"resource": resource, "identifier": str(identifier)},
-        )
-
-
-class ValidationError(AppError):
-    """Raised when payload or filter validation criteria fail."""
-
-    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
-        super().__init__(
-            code="VALIDATION_ERROR",
-            message=message,
-            status_code=422,
-            details=details,
-        )
-
-
-class ServiceUnavailableError(AppError):
-    """Raised when an infrastructure dependency is degraded or uncontactable."""
-
-    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
-        super().__init__(
-            code="SERVICE_UNHEALTHY",
-            message=message,
-            status_code=503,
-            details=details,
-        )
-
-
-async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-    """Serialize AppError subclasses into the canonical single-envelope shape.
-
-    Args:
-        request: The incoming FastAPI request.
-        exc: The raised AppError instance.
-
-    Returns:
-        JSONResponse: Standardized error envelope with appropriate status code.
-    """
+def response(request, status, code, message, details=None, headers=None):
     return JSONResponse(
-        status_code=exc.status_code,
+        status_code=status,
+        headers=headers,
         content={
-            "error": {
-                "code": exc.code,
-                "message": exc.message,
-                "details": exc.details,
-            }
+            "error": {"code": code, "message": message, "details": details},
+            "request_id": getattr(request.state, "request_id", "unknown"),
         },
     )
+
+
+def install_errors(app):
+    @app.exception_handler(HTTPException)
+    async def http_error(request: Request, exc: HTTPException):
+        codes = {
+            401: "UNAUTHORIZED",
+            403: "FORBIDDEN",
+            404: "NOT_FOUND",
+            409: "CONFLICT",
+            422: "VALIDATION_ERROR",
+            429: "RATE_LIMITED",
+            503: "UNAVAILABLE",
+        }
+        return response(
+            request,
+            exc.status_code,
+            codes.get(exc.status_code, "REQUEST_ERROR"),
+            str(exc.detail),
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        # Never echo input values (a login body can contain a password).
+        details = [
+            {"field": ".".join(map(str, e["loc"])), "message": e["msg"]} for e in exc.errors()
+        ]
+        return response(request, 422, "VALIDATION_ERROR", "Invalid request", details)
+
+    @app.exception_handler(SQLAlchemyError)
+    async def database_error(request: Request, exc: SQLAlchemyError):
+        logger.error("Database request failed: %s", type(exc).__name__)
+        return response(request, 503, "DATABASE_UNAVAILABLE", "Database temporarily unavailable")
+
+    @app.exception_handler(RedisError)
+    async def redis_error(request: Request, exc: RedisError):
+        return response(
+            request, 503, "REDIS_UNAVAILABLE", "Realtime service temporarily unavailable"
+        )

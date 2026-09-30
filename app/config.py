@@ -1,61 +1,51 @@
-"""Application configuration loaded strictly via pydantic-settings."""
-
-from __future__ import annotations
-
-from pydantic import Field
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Central configuration for Fleet platform.
-
-    All environment variables are loaded through this settings class.
-    Direct calls to os.environ are disallowed across the codebase.
-    """
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    environment: str = "development"
+    database_url: str = "postgresql+asyncpg://fleet:fleet@localhost:5432/fleet"
+    redis_url: str = "redis://localhost:6379/0"
+    admin_username: str = "admin"
+    admin_password: SecretStr = SecretStr("change-this-demo-password")
+    jwt_secret: SecretStr = SecretStr("local-demo-only-change-this-32-character-secret")
+    device_api_key: SecretStr = SecretStr("local-demo-device-key-change-this")
+    allowed_origins: str = (
+        "http://localhost:8000,http://127.0.0.1:8000,https://tejashr0716.github.io"
     )
-
-    app_env: str = "development"
-    log_level: str = "INFO"
-    database_url: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/fleet",
-        description="Async PostgreSQL / TimescaleDB connection URI",
-    )
-    redis_url: str = Field(
-        default="redis://localhost:6379/0",
-        description="Redis connection URI",
-    )
-    cors_origins: str = "https://tejashr0716.github.io,http://localhost:8000,http://127.0.0.1:8000"
-    ws_allowed_origins: str = (
-        "https://tejashr0716.github.io,http://localhost:8000,http://127.0.0.1:8000"
-    )
-
-    stream_name: str = "stream:positions"
-    consumer_group: str = "cg:positions"
-    consumer_name: str = "worker-1"
-    batch_max_size: int = 500
-    batch_max_wait_ms: int = 200
-    h3_resolution: int = 8
-    speed_limit_kmh: float = 80.0
-    idle_timeout_seconds: int = 300
-    signal_lost_ttl_seconds: int = 30
-    max_ws_connections: int = 5000
-    consumer_lag_unhealthy: int = 10000
-    position_retention_days: int = 30
+    token_ttl_minutes: int = 30
+    live_ttl_seconds: int = 30
+    speed_limit_kmh: float = 80
+    outbox_poll_seconds: float = 0.2
 
     @property
-    def cors_origin_list(self) -> list[str]:
-        """Parsed list of allowed HTTP CORS origins."""
-        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+    def origins(self) -> list[str]:
+        return [x.strip() for x in self.allowed_origins.split(",") if x.strip()]
 
-    @property
-    def ws_allowed_origin_list(self) -> list[str]:
-        """Parsed list of allowed WebSocket origins."""
-        return [item.strip() for item in self.ws_allowed_origins.split(",") if item.strip()]
-
-
-settings = Settings()
+    @model_validator(mode="after")
+    def production_safety(self):
+        if not self.database_url.startswith("postgresql+asyncpg://"):
+            raise ValueError("Use PostgreSQL with the asyncpg driver")
+        if self.environment not in {"development", "test", "production"}:
+            raise ValueError("Unknown environment")
+        if (
+            self.token_ttl_minutes <= 0
+            or self.live_ttl_seconds <= 0
+            or self.outbox_poll_seconds <= 0
+        ):
+            raise ValueError("TTL and polling intervals must be positive")
+        if self.environment == "production":
+            values = [self.jwt_secret.get_secret_value(), self.device_api_key.get_secret_value()]
+            if any(len(v) < 32 or "demo" in v.lower() or "change" in v.lower() for v in values):
+                raise ValueError(
+                    "Production requires independently generated JWT and device secrets"
+                )
+            password = self.admin_password.get_secret_value()
+            if len(password) < 12 or password == "change-this-demo-password":
+                raise ValueError(
+                    "Production requires a new admin password of at least 12 characters"
+                )
+            if "*" in self.origins or not self.origins:
+                raise ValueError("Production requires explicit allowed origins")
+        return self

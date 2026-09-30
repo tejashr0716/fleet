@@ -1,321 +1,175 @@
-# Fleet — Real-Time Telemetry & Geospatial Tracking Platform
+# Fleet — Real-Time Vehicle Tracking Platform
+
+**Python · FastAPI · PostgreSQL · Redis · REST APIs · JWT · HTML/CSS/JavaScript · Chart.js**
 
 [![Fleet CI](https://github.com/tejashr0716/fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/tejashr0716/fleet/actions/workflows/ci.yml)
-[![Deploy Frontend](https://github.com/tejashr0716/fleet/actions/workflows/pages.yml/badge.svg)](https://github.com/tejashr0716/fleet/actions/workflows/pages.yml)
 
-> **Live Demo:** [https://tejashr0716.github.io/fleet/](https://tejashr0716.github.io/fleet/)  
-> **Source Repository:** [https://github.com/tejashr0716/fleet](https://github.com/tejashr0716/fleet)
+[Public showcase](https://tejashr0716.github.io/fleet/) · [Architecture](docs/architecture.md) · [Interview guide](docs/interview-guide.md) · [Demo walkthrough](docs/demo-walkthrough.md)
 
----
+## What is real, and what is simulated?
 
-## Why This Is Interesting
-
-Most real-time tracking architectures either collapse under write pressure because every telemetry ping executes a synchronous database write, or they introduce excessive infrastructure bloat (Kafka, Kubernetes, Celery, Spark) that no engineer can realistically defend or tune single-handedly. **Fleet** solves both problems cleanly: HTTP/WebSocket ingress writes directly to **Redis Streams** in sub-millisecond memory without touching the database. An asynchronous micro-batch worker then pulls batches of up to 500 points, computes **Uber H3 spatial cells (r7 and r8)**, evaluates complex geofences via constant-time array/set membership, persists multi-row records into a **TimescaleDB hypertable** using idempotent upserts, and fans out live coordinates via Redis Pub/Sub to WebSockets filtered by each browser client's active bounding box.
-
-The entire system sustains over **2,000 positions/second** with an end-to-end **p95 latency under 120 ms**, compresses time-series chunks by **11.6x**, and prunes historical hypertable partitions so a 30-day vehicle history query returns in **under 1 ms**.
-
----
-
-## Architecture
-
-```
-                                  +-----------------------+
-                                  | Telemetry Ingest      |
-                                  | (HTTP /ws/ingest)     |
-                                  +-----------+-----------+
-                                              |
-                                              | XADD (Non-blocking)
-                                              v
-                                  +-----------------------+
-                                  | Redis 7 Streams       |
-                                  | stream:positions      |
-                                  +-----------+-----------+
-                                              |
-                                              | XREADGROUP (Consumer Group: cg:positions)
-                                              v
-                              +-------------------------------+
-                              | Micro-batch Worker            |
-                              | (Batch <= 500 or 200ms)       |
-                              +---------------+---------------+
-                                              |
-               +------------------------------+-------------------------------+
-               |                                                              |
-               v                                                              v
-+-------------------------------+                            +-------------------------------+
-| TimescaleDB (PostgreSQL 16)   |                            | Redis In-Memory State         |
-| - Hypertable 'positions'      |                            | - HSET fleet:live:{id}        |
-| - 1-min & 1-hour Aggregates   |                            | - GEOADD fleet:geo            |
-| - Chunk Compression & Pruning |                            | - PUBLISH fleet:events        |
-+-------------------------------+                            +---------------+---------------+
-               | (Commit Success)                                             |
-               v                                                              v
-      +-----------------+                                    +--------------------------------+
-      | XACK Stream Msg |                                    | API Pub/Sub Listener Lifespan  |
-      +-----------------+                                    +---------------+----------------+
-                                                                             |
-                                                                             | Spatial Bbox Filter
-                                                                             v
-                                                              +-------------------------------+
-                                                              | WebSocket Broadcast (/ws/live)|
-                                                              | Leaflet Browser Map Client    |
-                                                              +-------------------------------+
-```
-
----
-
-## Key Performance Numbers
-
-> *Note: Benchmark numbers are measured against local Docker containers running TimescaleDB and Redis 7 on Apple Silicon. The free hosting tier sleeps on inactivity.*
-
-| Metric | Target | Measured Result | Benchmark Script |
+| Mode | GPS source | Backend services | What it demonstrates |
 |---|---|---|---|
-| **Concurrent Vehicles** | 1,000 active | **1,000 sustained (10 min)** | `simulator/run.py --vehicles 1000` |
-| **Sustained Ingest** | ≥ 2,000 pos/s | **3,892 pos/s ceiling** | `benchmark/ingest_load.py` |
-| **End-to-End Latency (p95)** | < 250 ms | **112.4 ms** | `benchmark/e2e_latency.py` (200 WS sockets) |
-| **Concurrent WebSockets** | 200 sockets | **200 held concurrently** | `benchmark/e2e_latency.py` |
-| **Geofence Evaluation** | < 5 ms / pos | **1.8 ms p95 per batch** | Worker instrumentation |
-| **30-Day History Query** | < 150 ms | **0.48 ms** | `benchmark/query_bench.py` (1-hour agg) |
-| **Hypertable Compression** | > 5x | **11.6x (91.4% space saved)** | `hypertable_compression_stats()` |
+| Public GitHub Pages showcase | Clearly labeled browser fixtures | None until you explicitly connect an API | UI, map, observed sample history, threshold alerts |
+| Local full-stack demo | Python-generated synthetic GPS | Real FastAPI, PostgreSQL, Redis and WebSockets | Validation, durable history, JWT auth, outbox retries, live delivery |
+| Hosted full stack | Same synthetic simulator unless you add devices | Requires a separately deployed backend | Same real pipeline over HTTPS |
 
----
+**GitHub Pages cannot host a Python API or a database.** An animated public map is not evidence that Redis or PostgreSQL is running. The dashboard never silently substitutes sample data after a live connection fails.
 
-## Local Setup in 5 Commands
+This rebuild uses conventional PostgreSQL, not TimescaleDB; circular geofences, not H3; a transactional outbox, not Redis Streams. No Kafka, Kubernetes, ML model, real vehicle deployment, production traffic, or unverified throughput claim is implied.
+
+## Start locally
+
+Prerequisites: Git, Python 3.12+ for the credential setup script, and Docker Desktop / Docker Engine with Compose. On Windows use Docker Desktop with its supported WSL2 setup. Linux and macOS use the same Compose commands.
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/tejashr0716/fleet.git && cd fleet
-
-# 2. Boot TimescaleDB, Redis, API, and Worker services
-make up
-
-# 3. Run database migrations
-make migrate
-
-# 4. Seed 1,000 vehicles into the database
-make seed
-
-# 5. Launch Bengaluru traffic simulator (1,000 vehicles)
-make sim
+git clone https://github.com/tejashr0716/fleet.git
+cd fleet
+python scripts/doctor.py
+python scripts/setup.py
+docker compose --profile demo up --build -d
 ```
 
-Open your browser to `http://localhost:8000/static/index.html` to see 1,000 vehicles moving smoothly across Bengaluru with live speed sparklines and H3 heatmap density.
+If your machine uses `python3`, use that instead of `python`.
 
----
+1. Open **http://localhost:8000/static/index.html**.
+2. The initial screen is explicitly a browser simulation. Click **Connect live API**.
+3. Backend origin: `http://localhost:8000`. Username and password: `ADMIN_USERNAME` / `ADMIN_PASSWORD` from your local `.env` file.
+4. Confirm **Connected live API**. The Python simulator submits 12 vehicles every second; the worker delivers committed events to Redis and the API's authenticated WebSocket.
+5. Open **http://localhost:8000/docs** to inspect the actual REST contract.
 
-## Environment Variables (`.env`)
+`setup.py` creates random credentials once and never overwrites an existing `.env`. Do not commit that file or paste its contents into chat. Defaults in `.env.example` are conspicuous local-demo placeholders, not production credentials.
 
-All configurations are handled via `pydantic-settings` in `app/config.py`:
+```bash
+docker compose logs -f api worker simulator
+docker compose --profile demo down
+```
 
-| Variable | Default | Description |
+Stopping preserves PostgreSQL and Redis volumes. **Do not add `-v` unless you deliberately want to delete your local demo data.** The rebuild stores its tables under `fleet_v2`; it does not drop old prototype tables in `public`.
+
+### Without Docker
+
+Run PostgreSQL 15+ and Redis 6.2+ yourself, create a database owned by your application role, and configure the real URLs in `.env`. Python 3.12/3.13 is supported.
+
+```bash
+python -m venv .venv
+# Activate using your OS's normal venv command.
+pip install -e '.[dev]'
+alembic upgrade head
+python -m simulator.seed
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Separate terminals, with the same environment:
+python -m workers.position_consumer
+python -m simulator.run --trigger-alerts
+```
+
+## Preview without backend dependencies
+
+```bash
+python -m http.server 8080 --directory static
+```
+
+Open http://localhost:8080. This is explicitly browser-simulated data, not a backend test. Use the API-served dashboard at port 8000 for the local live connection; a custom frontend origin must be added to `ALLOWED_ORIGINS`.
+
+## Safely replace an existing clone from this package
+
+The supplied package is a complete replacement, not a patch. Old H3/Timescale migration/tests must not remain mixed with the new implementation. The optional helper verifies checksums and the original base revision, refuses dirty or unrelated repositories, and creates local backup/rebuild branches. It never pushes or force-pushes.
+
+```bash
+git clone https://github.com/tejashr0716/fleet.git fleet-existing
+python /path/to/extracted/fleet/scripts/replace_existing.py --target fleet-existing
+# Review the dry-run summary, then explicitly apply:
+python /path/to/extracted/fleet/scripts/replace_existing.py --target fleet-existing --apply
+```
+
+Use your own OS path syntax. Review `git diff`, commit and publish the branch through GitHub Desktop or your normal Git credentials, then merge a pull request after checks pass. Never embed an access token in a Git URL. The `SOURCE_MANIFEST.json` base/checksums intentionally stop this helper if the repository has changed since packaging.
+
+## Architecture in one sentence
+
+**Validate/authenticate a GPS batch → atomically commit positions plus outbox events in PostgreSQL → retry Redis cache/GEO/PubSub handoff in a worker → fan out to authenticated WebSockets, with REST snapshot reconciliation.**
+
+```text
+Python GPS simulator --authenticated HTTP--> FastAPI /positions/batch
+                                              |
+                               PostgreSQL transaction
+                                positions + alerts + outbox
+                                              |
+                                  Outbox worker (retry)
+                                              |
+                         Redis latest cache + GEO + Pub/Sub
+                                              |
+                              FastAPI bounded WebSocket queues
+                                              |
+                               Browser map + Chart.js history
+```
+
+A `202` response means PostgreSQL committed and realtime handoff is queued. It does **not** promise that every browser already received the event.
+
+## API surface
+
+| Method / route | Purpose | Authentication |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5432/fleet` | Async SQLAlchemy database URI |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis 7 connection URI |
-| `CORS_ORIGINS` | `https://tejashr0716.github.io` | Comma-separated allowed HTTP origins |
-| `WS_ALLOWED_ORIGINS`| `https://tejashr0716.github.io` | Comma-separated allowed WebSocket origins |
-| `STREAM_NAME` | `stream:positions` | Key name for the ingest stream |
-| `CONSUMER_GROUP` | `cg:positions` | Redis Streams consumer group |
-| `BATCH_MAX_SIZE` | `500` | Maximum messages per micro-batch |
-| `BATCH_MAX_WAIT_MS`| `200` | Maximum millisecond wait before batch dispatch |
-| `H3_RESOLUTION` | `8` | Spatial indexing resolution (~460m edge length) |
-| `SPEED_LIMIT_KMH` | `80.0` | Threshold triggering automated speeding alerts |
-| `SIGNAL_LOST_TTL_SECONDS` | `30` | Silence duration before marking signal lost |
-| `MAX_WS_CONNECTIONS`| `5000` | Max concurrent WebSocket connections allowed |
-| `CONSUMER_LAG_UNHEALTHY` | `10000` | Backlog threshold causing `/health` to return 503 |
-| `POSITION_RETENTION_DAYS` | `30` | Retention window for raw telemetry chunks |
+| `POST /api/v1/auth/token` | Issue short-lived HS256 JWT | Username/password; rate limited |
+| `GET /api/v1/vehicles` | Registered vehicles | Bearer JWT |
+| `POST /api/v1/vehicles` | Register a vehicle | Bearer JWT |
+| `POST /api/v1/positions/batch` | Validate and commit 1–100 GPS samples | Device API key or JWT |
+| `GET /api/v1/fleet/live` | Current PostgreSQL snapshot | Bearer JWT |
+| `GET /api/v1/fleet/nearest` | Fresh nearest vehicles within 25 km | Bearer JWT |
+| `GET /api/v1/vehicles/{id}/positions` | Bounded, UTC history window | Bearer JWT |
+| `GET /api/v1/vehicles/{id}/trips` | Derived trace sessions, not inferred business trips | Bearer JWT |
+| `GET / POST /api/v1/geofences` | Circular geofences | Bearer JWT |
+| `GET /api/v1/alerts` | Persisted speeding / geofence transitions | Bearer JWT |
+| `GET /api/v1/health` | Dependency health and pending outbox count | Public; no vehicle data |
+| `WS /ws/live` | Authenticated live events | JWT in the first frame, not a URL |
 
----
+The browser keeps JWTs only in memory. Tokens expire after 30 minutes by default. The demo is one admin account, not a production multi-tenant identity system.
 
-## REST API Reference
+## Correctness and failure behavior
 
-Every failure response returns the standard envelope:
-```json
-{
-  "error": {
-    "code": "NOT_FOUND",
-    "message": "Vehicle '9999' was not found",
-    "details": {"resource": "Vehicle", "identifier": "9999"}
-  }
-}
-```
+- Retry the same `(vehicle_id, recorded_at)` sample: first write wins; no duplicate position/outbox row.
+- Delayed GPS: preserve history, but do not regress the latest cache or create a false live transition.
+- Redis failure: PostgreSQL ingestion/history still work; outbox rows wait; nearest queries use an explicitly labeled database fallback. Login fails closed while its Redis rate limiter is unavailable.
+- Worker crash after publishing but before its DB commit: an event may be published again. Event IDs and sample timestamps permit deduplication. This is **not exactly-once delivery**.
+- WebSocket loss: the viewer retries and reconciles from PostgreSQL. Pub/Sub itself is not durable.
+- Slow viewer: queue is capped at 64 events; old queued frames are dropped and a gap notice requests reconciliation.
+- Geofence jitter, real device clock drift, advanced permissions, multi-tenant isolation, durable client replay, alert hysteresis and production monitoring are future work.
 
-### 1. Ingest Batch Telemetry
-`POST /api/v1/positions/batch` (Status: 202 Accepted)
-```bash
-curl -X POST http://localhost:8000/api/v1/positions/batch \
-  -H "Content-Type: application/json" \
-  -d '{
-    "positions": [
-      {
-        "vehicle_id": 1,
-        "lat": 12.9716,
-        "lon": 77.5946,
-        "speed_kmh": 45.2,
-        "heading": 180,
-        "accuracy_m": 4.5,
-        "time": "2026-09-30T08:00:00Z"
-      }
-    ]
-  }'
-```
-Response:
-```json
-{
-  "status": "accepted",
-  "count": 1,
-  "stream_ids": ["1759190400000-0"]
-}
-```
+## Test and measure
 
-### 2. Vehicle History Query (Auto Downsampling)
-`GET /api/v1/vehicles/1/positions?from=2026-09-01T00:00:00Z&to=2026-09-30T00:00:00Z&downsample=auto`
-```bash
-curl "http://localhost:8000/api/v1/vehicles/1/positions?from=2026-09-01T00:00:00Z&to=2026-09-30T00:00:00Z&downsample=auto"
-```
-Response:
-```json
-{
-  "source_used": "positions_1hour (hierarchical continuous aggregate)",
-  "points": [
-    {
-      "vehicle_id": 1,
-      "time": "2026-09-01T00:00:00Z",
-      "lat": 12.9172,
-      "lon": 77.6228,
-      "speed_kmh": 42.5,
-      "point_count": 720
-    }
-  ]
-}
-```
-
-### 3. Create Geofence (Polyfilled to H3)
-`POST /api/v1/geofences` (Status: 201 Created)
-```bash
-curl -X POST http://localhost:8000/api/v1/geofences \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Koramangala Commercial Hub",
-    "kind": "polygon",
-    "geojson": {
-      "type": "Polygon",
-      "coordinates": [[[77.61, 12.93], [77.63, 12.93], [77.63, 12.95], [77.61, 12.95], [77.61, 12.93]]]
-    },
-    "h3_resolution": 8
-  }'
-```
-Response:
-```json
-{
-  "id": 1,
-  "name": "Koramangala Commercial Hub",
-  "kind": "polygon",
-  "h3_resolution": 8,
-  "h3_cells": [613941295947775999, 613941295947776000],
-  "created_at": "2026-09-30T08:00:00Z"
-}
-```
-
-### 4. Health Check with Consumer Lag
-`GET /api/v1/health`
-```bash
-curl http://localhost:8000/api/v1/health
-```
-Response:
-```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "redis": "connected",
-  "consumer_lag": 0
-}
-```
-
----
-
-## WebSocket Protocol (`/ws/live`)
-
-### Client → Server Frames
-```json
-// Bounding box subscription (lon_min, lat_min, lon_max, lat_max)
-{"action": "subscribe", "bbox": [77.50, 12.85, 77.75, 13.05], "vehicle_ids": []}
-
-// Heartbeat ping
-{"action": "ping"}
-
-// Cancel subscription
-{"action": "unsubscribe"}
-```
-
-### Server → Client Frames
-```json
-// Live vehicle position with emitted_at for E2E latency tracking
-{
-  "type": "position",
-  "data": {
-    "vehicle_id": 42,
-    "lat": 12.9716,
-    "lon": 77.5946,
-    "speed_kmh": 54.2,
-    "heading": 180,
-    "h3_r8": "8860145a33fffff",
-    "ts": "2026-09-30T08:00:00Z",
-    "emitted_at": "2026-09-30T08:00:00.045Z"
-  }
-}
-
-// Automated Alert Trigger
-{
-  "type": "alert",
-  "data": {
-    "vehicle_id": 42,
-    "kind": "speeding",
-    "severity": "critical",
-    "payload": {"speed_kmh": 94.5, "limit": 80.0},
-    "time": "2026-09-30T08:00:00Z"
-  }
-}
-```
-
----
-
-## TimescaleDB: Hypertables & Continuous Aggregates
-
-### 1. Hypertables
-The core table `positions` is partitioned into daily chunks using `create_hypertable('positions', 'time', chunk_time_interval => INTERVAL '1 day')`. Its composite primary key `(vehicle_id, time)` provides the bedrock for idempotent at-least-once pipeline ingestion.
-
-### 2. Hierarchical Continuous Aggregates
-- `positions_1min`: Aggregates speed (avg, max), last coordinates (`last(lat, time)`), and count per 1-minute bucket. Refreshed continuously every minute with a 30s lag offset.
-- `positions_1hour`: **Rolled up hierarchically from `positions_1min`, never from raw table scans**. This guarantees linear aggregate compute cost regardless of raw volume.
-
-### 3. Compression & Retention
-- Chunks older than 7 days are compressed via segmenting by `vehicle_id` and ordering by `time DESC`.
-- Raw chunks are dropped after 30 days via `add_retention_policy('positions', INTERVAL '30 days')`.
-- The 1-minute aggregate is retained for 1 full year.
-
----
-
-## Delivery Semantics & Idempotency Guarantee
-
-Fleet guarantees **at-least-once delivery** through Redis Streams consumer groups without risking duplicate data:
-1. Devices/Simulators post telemetry to `/api/v1/positions/batch`.
-2. Ingress `XADD`s to `stream:positions` and returns `202 Accepted` immediately (0 database queries executed).
-3. The worker processes micro-batches, inserting with:
-   ```sql
-   INSERT INTO positions (...) VALUES (...) ON CONFLICT (vehicle_id, time) DO NOTHING;
-   ```
-4. Only after PostgreSQL commits is `XACK` issued back to Redis Streams. If the worker dies before acknowledging, `workers/reclaimer.py` claims pending messages via `XAUTOCLAIM` and replays them idempotently without creating duplicate database rows.
-
----
-
-## Testing & CI
+CI uses real PostgreSQL 16 and Redis 7 service containers. For local tests create a **separate** database named `fleet_test` and use Redis DB 1. Tests refuse to reset any other database.
 
 ```bash
-# Run unit & integration test suite
-pytest -v tests/
-
-# Run ruff linter and formatting checks
+pip install -e '.[dev]'
+# Set DATABASE_URL to .../fleet_test (never your actual demo database).
+alembic upgrade head
+pytest -q
 ruff check .
 ruff format --check .
 ```
 
-All pull requests and commits run against real `timescale/timescaledb:latest-pg16` and `redis:7-alpine` service containers in GitHub Actions.
+Benchmarks are optional, reproducible probes—not capacity guarantees:
+
+```bash
+python -m benchmark.ingest_load --url http://localhost:8000 --requests 30
+python -m benchmark.e2e_latency --url http://localhost:8000 --samples 20
+python -m benchmark.query_bench --url http://localhost:8000 --requests 20
+```
+
+They read local credentials from `.env`, write hardware/context plus raw timings to `reports/`, and use synthetic data. See [measurement notes](docs/latency.md). The old prototype's Apple Silicon numbers are not carried forward as verified results.
+
+## Deployment and honest project claims
+
+The Pages workflow publishes `static/`. Backend deployment additionally needs a Python host, persistent PostgreSQL, Redis, and a continuously running worker/simulator. See [deployment checklist](docs/deployment.md). No paid service is provisioned automatically.
+
+Use [resume evidence](docs/resume-evidence.md) only after running, reviewing and understanding the code yourself. Project dates must reflect actual work; rebuilding now does not prove an earlier date or a historical performance number. Git history is not backdated.
+
+## Project map
+
+- `app/`: API, validated schemas, SQL repositories, rules, authentication and WebSockets.
+- `workers/`: outbox delivery and optional delivered-event housekeeping.
+- `migrations/`: isolated `fleet_v2` schema.
+- `simulator/`: explicitly synthetic Bengaluru fixtures and generator.
+- `static/`: deployable showcase and live API connector; local pinned map/chart assets.
+- `tests/`: real dependency integration plus pure-rule unit tests.
+- `docs/`: architecture, interview answers, demo walkthrough, evidence and deployment limits.
+- `reports/`: verification context; no invented performance data.
