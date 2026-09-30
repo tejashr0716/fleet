@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,8 +14,9 @@ from app.config import Settings
 from app.db import Database
 from app.errors import install_errors
 from app.redis_client import make_redis
-from app.routers import alerts, fleet, geofences, health, positions, vehicles
+from app.routers import alerts, demo, fleet, geofences, health, positions, vehicles
 from app.security import Auth, Login
+from app.services.demo import SampleGPS
 from app.ws.live import router as ws_router
 from app.ws.manager import Hub
 
@@ -36,6 +38,15 @@ def create_app(settings=None):
         app.state.redis = make_redis(settings.redis_url)
         app.state.auth = Auth(settings)
         app.state.hub = Hub()
+        app.state.demo = None
+        app.state.cloud_worker = None
+        if settings.cloud_demo_enabled:
+            app.state.demo = SampleGPS(
+                f"http://127.0.0.1:{int(os.getenv('PORT', '8000'))}", settings=settings
+            )
+            from workers.position_consumer import run
+
+            app.state.cloud_worker = asyncio.create_task(run(settings))
         listener = asyncio.create_task(app.state.hub.listen(app.state.redis))
         if settings.environment == "development":
             logger.warning(
@@ -44,6 +55,11 @@ def create_app(settings=None):
         try:
             yield
         finally:
+            if app.state.demo:
+                await app.state.demo.stop()
+            if app.state.cloud_worker:
+                app.state.cloud_worker.cancel()
+                await asyncio.gather(app.state.cloud_worker, return_exceptions=True)
             listener.cancel()
             await asyncio.gather(listener, return_exceptions=True)
             await app.state.redis.aclose()
@@ -51,7 +67,7 @@ def create_app(settings=None):
 
     app = FastAPI(
         title="Fleet Vehicle Tracking",
-        version="2.0.0",
+        version="2.1.0",
         lifespan=lifespan,
         description="Synthetic GPS demo. PostgreSQL durability, Redis fan-out, JWT-protected reads.",
     )
@@ -99,6 +115,7 @@ def create_app(settings=None):
         geofences.router,
         alerts.router,
         health.router,
+        demo.router,
     ]:
         app.include_router(router, prefix="/api/v1")
     app.include_router(ws_router)

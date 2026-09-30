@@ -1,5 +1,15 @@
 # Fleet — Real-Time Vehicle Tracking Platform
 
+## Verified temporary hosted demo
+
+- [Public showcase](https://tejashr0716.github.io/fleet/) starts in clearly labeled browser simulation.
+- [Hosted API dashboard](https://fleet-tejashr0716-demo.onrender.com/static/index.html) uses the real FastAPI, PostgreSQL and Redis-compatible Key Value services after sign-in.
+- Click **Connect live API**, use your private owner credentials, then **Start sample GPS (5 min)**. The public page pre-fills the hosted origin; credentials are never published.
+- GPS is synthetic. Database writes, transactional outbox handoff, Redis GEO and authenticated WebSocket delivery are real. Alerts use thresholds, not machine learning.
+- Stop GPS and select **Use sample data** after presenting. Free instances can sleep and take about a minute to wake.
+- The disposable free PostgreSQL database expires **2026-10-30 at 18:12 UTC (23:42 IST)**. This is not permanent, always-on production hosting. Keep the Docker setup for practice after expiry.
+- [Free hosting setup and limits](docs/render-free-demo.md) · [Interview guide](docs/interview-guide.md) · [Live verification evidence](reports/render-live-verification.json).
+
 **Python · FastAPI · PostgreSQL · Redis · REST APIs · JWT · HTML/CSS/JavaScript · Chart.js**
 
 [![Fleet CI](https://github.com/tejashr0716/fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/tejashr0716/fleet/actions/workflows/ci.yml)
@@ -173,3 +183,7 @@ Use [resume evidence](docs/resume-evidence.md) only after running, reviewing and
 - `tests/`: real dependency integration plus pure-rule unit tests.
 - `docs/`: architecture, interview answers, demo walkthrough, evidence and deployment limits.
 - `reports/`: verification context; no invented performance data.
+
+## Optional temporary free-tier cloud demo
+
+Version 2.1 adds an optional one-service API/worker runner and an authenticated, time-limited **Start sample GPS** control. The normal Docker workflow is unchanged. This is a temporary demonstration, not always-on production hosting. See [the complete Render free-demo guide](docs/render-free-demo.md), including the 30-day database expiration and shared usage/billing limits. Resource provisioning and billing controls must be confirmed separately; a prepared configuration does not mean a live backend has been deployed.

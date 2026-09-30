@@ -37,8 +37,8 @@ async def drain_once(db, redis, ttl=30, limit=100):
             return len(events)
 
 
-async def run():
-    settings = Settings()
+async def run(settings=None):
+    settings = settings or Settings()
     db, redis = Database(settings.database_url), make_redis(settings.redis_url)
     try:
         while True:

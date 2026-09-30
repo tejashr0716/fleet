@@ -1,0 +1,114 @@
+{
+  "checkedAt": "2026-09-30T19:02:40.406202+00:00",
+  "backendUrl": "https://fleet-tejashr0716-demo.onrender.com",
+  "candidateCommit": "6e644c1da04709c19b0be952f08706aaf1f88953",
+  "checks": [
+    {
+      "name": "PostgreSQL, Redis and combined worker healthy",
+      "passed": true
+    },
+    {
+      "name": "Synthetic data explicitly disclosed",
+      "passed": true
+    },
+    {
+      "name": "Protected vehicle endpoint",
+      "passed": true
+    },
+    {
+      "name": "Protected demo endpoint",
+      "passed": true
+    },
+    {
+      "name": "Private sign-in",
+      "passed": true
+    },
+    {
+      "name": "Twelve seeded demo vehicles",
+      "passed": true
+    },
+    {
+      "name": "Reject invalid duration 0",
+      "passed": true
+    },
+    {
+      "name": "Reject invalid duration 601",
+      "passed": true
+    },
+    {
+      "name": "Reject invalid duration True",
+      "passed": true
+    },
+    {
+      "name": "Authenticated live WebSocket",
+      "passed": true
+    },
+    {
+      "name": "On-demand Python GPS starts",
+      "passed": true
+    },
+    {
+      "name": "Reject concurrent GPS sessions",
+      "passed": true
+    },
+    {
+      "name": "Real Redis-to-WebSocket position delivery",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL snapshot reconciliation",
+      "passed": true
+    },
+    {
+      "name": "Stored PostgreSQL history",
+      "passed": true
+    },
+    {
+      "name": "Real Redis GEO lookup",
+      "passed": true
+    },
+    {
+      "name": "Threshold speeding fixture stored",
+      "passed": true
+    },
+    {
+      "name": "On-demand Python GPS stops",
+      "passed": true
+    },
+    {
+      "name": "Outbox drained after stopping",
+      "passed": true
+    },
+    {
+      "name": "History preserved after stopping",
+      "passed": true
+    }
+  ],
+  "scope": "Real hosted services with synthetic GPS; not physical hardware or a load benchmark.",
+  "observedWebSocketFrames": {
+    "heartbeat": 16,
+    "status": 16,
+    "position": 85,
+    "alert": 1
+  },
+  "observedVehicleCount": 12,
+  "observedHistoryCount": 16,
+  "observedAlertKinds": [
+    "speeding"
+  ],
+  "observedAlertCount": 1,
+  "finalHealth": {
+    "status": "healthy",
+    "database": "connected",
+    "redis": "connected",
+    "outbox_pending": 0,
+    "websocket_clients": 0,
+    "pubsub_connected": true,
+    "sample_data": true,
+    "schema_version": "fleet_v2",
+    "speed_limit_kmh": 80.0,
+    "cloud_demo": true,
+    "demo_worker_running": true
+  },
+  "passed": true
+}

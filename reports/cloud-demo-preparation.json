@@ -1,0 +1,57 @@
+{
+  "feature_version": "2.1.0",
+  "prepared_at": "2026-09-30T17:30:16.005282+00:00",
+  "base_revision": "744204e884d06a2041bdbac65c71649bc60ca1b1",
+  "mode": "optional one-service API/outbox-worker demo; normal Compose mode unchanged",
+  "local_verification": {
+    "unit_tests_passed": 13,
+    "style": "ruff check and format passed",
+    "javascript": "node syntax checks passed",
+    "mocked_browser_controls": {
+      "scope": "UI-only validation with intercepted mock API and WebSocket; NOT real backend evidence",
+      "checks": 11,
+      "passed": [
+        "cloud control hidden in browser simulation",
+        "cloud control appears only after live connection advertises the mode",
+        "password cleared after connection",
+        "start sends a 300-second request and changes control to stop",
+        "desktop cloud mode has no horizontal overflow",
+        "stop restores start control",
+        "return to browser simulation hides cloud controls",
+        "no tokens or credentials persisted",
+        "390px mobile cloud mode has no horizontal overflow",
+        "mobile start and stop are actionable",
+        "no application runtime errors during mocked UI checks"
+      ],
+      "applicationErrors": []
+    },
+    "image_preview": "Screenshot files captured; image-preview helper unavailable. Automated viewport/control checks passed."
+  },
+  "service_integration_tests": "Corrected GitHub push and PR CI runs succeeded; the full source suite contains 54 collected tests, including five new real-service integration cases.",
+  "limits": {
+    "default_session_seconds": 300,
+    "maximum_session_seconds": 600,
+    "starts_per_process_hour": 3,
+    "maximum_active_sessions": 1,
+    "default_builtin_synthetic_position_budget": 50000
+  },
+  "render_resources_created": 3,
+  "hosting_status": "Temporary free Render backend deployed and verified with synthetic GPS",
+  "billing_status": "Hobby workspace inspected: no card on file; only free compute created, no payment method added or plans upgraded.",
+  "route_interpolation": "negative first-tick wraparound corrected and regression-tested",
+  "first_integration_run": {
+    "passed": 53,
+    "failed": 1,
+    "issue": "New ORM test fixture supplied an ISO string to a datetime column; fixture now converts to datetime. Full rerun pending.",
+    "url": "https://github.com/tejashr0716/fleet/actions/runs/36752206315/job/110013378032"
+  },
+  "corrected_ci_runs": [
+    "https://github.com/tejashr0716/fleet/actions/runs/36754337417",
+    "https://github.com/tejashr0716/fleet/actions/runs/36754331617"
+  ],
+  "hosted_origin": "https://fleet-tejashr0716-demo.onrender.com",
+  "database_expires_at": "2026-10-30T18:12:24.222094Z",
+  "hosted_backend_checks_passed": 20,
+  "hosted_ui_checks_passed": 10,
+  "scope_limit": "Not a physical GPS, load, uptime or production-capacity proof."
+}
