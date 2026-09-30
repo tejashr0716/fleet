@@ -87,3 +87,14 @@ Do these yourself before claiming you can maintain the project in an interview.
 ## Why does the free cloud demo share API and worker compute?
 
 Render's free tier cannot host a separate background worker. The optional demo mode starts the existing outbox consumer as a lifespan-managed task inside one Uvicorn process. It is explicitly an interview-demo compromise, not a production scaling design. Normal Docker mode still has separate services. The GPS control is authenticated, time-limited and off until requested; its synthetic samples travel through the same real HTTP, PostgreSQL, Redis and WebSocket path. Explain both the compromise and the free database's 30-day expiration.
+
+
+## Presenting the temporary hosted version
+
+1. Open the public showcase and explicitly distinguish browser simulation from the connected backend.
+2. Connect using the private owner credentials; click Start sample GPS. Explain that Python generates coordinates, not physical GPS hardware.
+3. Show changing positions, stored PostgreSQL history, observed speed and the Redis GEO source label. A deliberate 92 km/h fixture crosses the 80 km/h speeding rule after approximately 15 simulator ticks; it is not an ML prediction.
+4. Explain the free-tier compromise: the same outbox consumer is an asyncio task in one web process because Render has no free background-worker plan. Normal Docker Compose retains a separate worker.
+5. Stop GPS and return to browser simulation. Disclose cold starts, shared free quotas, volatile cache and the database expiry on 2026-10-30 at 18:12 UTC.
+
+Evidence from one controlled hosted run: 20 checks passed, authenticated WebSocket position frames were observed for all 12 seeded vehicles, PostgreSQL history was retrieved, Redis GEO was used, and a speeding fixture was stored. This is functionality evidence, not throughput, latency, real-hardware, uptime or production-scale evidence. Do not turn these counts into invented resume performance claims.

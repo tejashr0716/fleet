@@ -27,7 +27,7 @@
     },
     "image_preview": "Screenshot files captured; image-preview helper unavailable. Automated viewport/control checks passed."
   },
-  "service_integration_tests": "five new integration tests pending GitHub CI; previous released backend suite had 36 passing tests",
+  "service_integration_tests": "Corrected GitHub push and PR CI runs succeeded; the full source suite contains 54 collected tests, including five new real-service integration cases.",
   "limits": {
     "default_session_seconds": 300,
     "maximum_session_seconds": 600,
@@ -35,14 +35,23 @@
     "maximum_active_sessions": 1,
     "default_builtin_synthetic_position_budget": 50000
   },
-  "render_resources_created": 0,
-  "hosting_status": "prepared, not deployed",
-  "billing_status": "provider controls must be inspected; free compute does not guarantee no usage overages",
+  "render_resources_created": 3,
+  "hosting_status": "Temporary free Render backend deployed and verified with synthetic GPS",
+  "billing_status": "Hobby workspace inspected: no card on file; only free compute created, no payment method added or plans upgraded.",
   "route_interpolation": "negative first-tick wraparound corrected and regression-tested",
   "first_integration_run": {
     "passed": 53,
     "failed": 1,
     "issue": "New ORM test fixture supplied an ISO string to a datetime column; fixture now converts to datetime. Full rerun pending.",
     "url": "https://github.com/tejashr0716/fleet/actions/runs/36752206315/job/110013378032"
-  }
+  },
+  "corrected_ci_runs": [
+    "https://github.com/tejashr0716/fleet/actions/runs/36754337417",
+    "https://github.com/tejashr0716/fleet/actions/runs/36754331617"
+  ],
+  "hosted_origin": "https://fleet-tejashr0716-demo.onrender.com",
+  "database_expires_at": "2026-10-30T18:12:24.222094Z",
+  "hosted_backend_checks_passed": 20,
+  "hosted_ui_checks_passed": 10,
+  "scope_limit": "Not a physical GPS, load, uptime or production-capacity proof."
 }

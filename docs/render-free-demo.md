@@ -2,6 +2,18 @@
 
 This is an optional interview-demo deployment, not an always-on production promise. The normal Docker Compose deployment still uses separate API and outbox-worker services. Browser simulation remains explicitly separate from backend mode.
 
+## Verified temporary hosted demo
+
+- [Public showcase](https://tejashr0716.github.io/fleet/) starts in clearly labeled browser simulation.
+- [Hosted API dashboard](https://fleet-tejashr0716-demo.onrender.com/static/index.html) uses the real FastAPI, PostgreSQL and Redis-compatible Key Value services after sign-in.
+- Click **Connect live API**, use your private owner credentials, then **Start sample GPS (5 min)**. The public page pre-fills the hosted origin; credentials are never published.
+- GPS is synthetic. Database writes, transactional outbox handoff, Redis GEO and authenticated WebSocket delivery are real. Alerts use thresholds, not machine learning.
+- Stop GPS and select **Use sample data** after presenting. Free instances can sleep and take about a minute to wake.
+- The disposable free PostgreSQL database expires **2026-10-30 at 18:12 UTC (23:42 IST)**. This is not permanent, always-on production hosting. Keep the Docker setup for practice after expiry.
+- [Free hosting setup and limits](render-free-demo.md) · [Interview guide](interview-guide.md) · [Live verification evidence](../reports/render-live-verification.json).
+
+The hosted Key Value service is Redis-compatible Valkey (provider version 8.1.10 at provisioning); the local/CI stack uses Redis 7. The application uses the Redis protocol and GEO/Pub/Sub primitives, not a fabricated cache.
+
 ## Why a combined runner?
 
 Render does not offer free background-worker instances. The `python -m app.cloud_demo` entrypoint runs migrations, idempotently seeds 12 demo vehicles, and starts a single Uvicorn process. With `CLOUD_DEMO_ENABLED=true`, the FastAPI lifespan starts the same outbox consumer as an asyncio task, using its own database and Redis connections. Shutdown cancels and joins the consumer and active GPS session before closing dependencies. Do not scale this demo runner beyond one web instance/one Uvicorn worker.

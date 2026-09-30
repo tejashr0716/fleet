@@ -1,0 +1,58 @@
+{
+  "checked_at": "2026-09-30T19:27:01.963678+00:00",
+  "backend_url": "https://fleet-tejashr0716-demo.onrender.com",
+  "scope": "scoped real hosted UI functional checks, not a full visual/security audit",
+  "checks": [
+    {
+      "name": "Delivery filter",
+      "passed": true
+    },
+    {
+      "name": "Registration search",
+      "passed": true
+    },
+    {
+      "name": "Real Redis nearest-vehicle feedback",
+      "passed": true
+    },
+    {
+      "name": "Desktop has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "Sign-in password cleared",
+      "passed": true
+    },
+    {
+      "name": "No authentication in browser storage",
+      "passed": true
+    },
+    {
+      "name": "Mobile has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "GPS stop control",
+      "passed": true
+    },
+    {
+      "name": "Return to disclosed browser simulation",
+      "passed": true
+    },
+    {
+      "name": "Cloud GPS control hidden in simulation",
+      "passed": true
+    }
+  ],
+  "runtime_errors": 0,
+  "error_console_entries": 0,
+  "desktop_width": 1440,
+  "mobile_width": 390,
+  "gps_stopped_after_test": true,
+  "returned_to_browser_simulation": true,
+  "screenshot_pixel_review": "not performed; image helper unavailable",
+  "screenshots_recorded": [
+    "desktop-live.png",
+    "mobile-live.png"
+  ]
+}
