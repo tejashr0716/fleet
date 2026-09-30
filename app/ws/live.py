@@ -1,85 +1,79 @@
-"""Browser WebSocket subscriber endpoint for live telemetry updates."""
-
-from __future__ import annotations
-
 import asyncio
-from datetime import UTC, datetime
-from typing import Any
+import time
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from app.ws.manager import ws_manager
+from app.ws.manager import Client
 
 router = APIRouter()
 
 
-@router.websocket("/live")
-async def live_websocket_endpoint(websocket: WebSocket) -> None:
-    """Browser WebSocket subscriber endpoint.
-
-    Accepts spatial subscriptions, sends periodic pings, and filters
-    out clients exceeding thresholds or failing heartbeats.
-    """
-    await ws_manager.connect(websocket)
-    last_received = datetime.now(tz=UTC).timestamp()
-
-    async def heartbeat_monitor() -> None:
+async def writer(ws, hub, client):
+    while True:
+        if time.time() >= client.expires_at:
+            await ws.close(code=1008, reason="Token expired; sign in again")
+            return
         try:
-            while True:
-                await asyncio.sleep(20)
-                # Check for client timeout (> 60s silence)
-                if datetime.now(tz=UTC).timestamp() - last_received > 60:
-                    await websocket.close(code=1000, reason="Heartbeat timeout")
-                    break
-                await websocket.send_json({"type": "ping"})
-        except (asyncio.CancelledError, Exception):
-            pass
+            event = await asyncio.wait_for(client.queue.get(), timeout=2)
+        except TimeoutError:
+            event = {
+                "type": "heartbeat",
+                "data": {"realtime": "connected" if hub.connected else "unavailable"},
+            }
+        if client.dropped:
+            await ws.send_json({"type": "gap", "data": {"dropped": client.dropped}})
+            client.dropped = 0
+        await ws.send_json(event)
 
-    heartbeat_task = asyncio.create_task(heartbeat_monitor())
 
+@router.websocket("/ws/live")
+async def live(ws: WebSocket):
+    origin = ws.headers.get("origin")
+    if origin and origin not in ws.app.state.settings.origins:
+        await ws.close(code=1008)
+        return
+    await ws.accept()
+    hub, client, task = ws.app.state.hub, None, None
     try:
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=5)
+        if len(raw) > 4096:
+            raise ValueError("Oversized authentication frame")
+        import json
+
+        message = json.loads(raw)
+        if not isinstance(message, dict) or message.get("type") != "auth":
+            raise ValueError("Authenticate in the first frame")
+        claims = ws.app.state.auth.decode(message.get("token", ""))
+        if claims["sub"] != ws.app.state.settings.admin_username:
+            raise ValueError("Unknown account")
+        client = Client(expires_at=claims["exp"])
+        hub.clients.add(client)
+        await ws.send_json(
+            {
+                "type": "ready",
+                "data": {
+                    "sample_data": True,
+                    "realtime": "connected" if hub.connected else "unavailable",
+                },
+            }
+        )
+        task = asyncio.create_task(writer(ws, hub, client))
         while True:
-            message: dict[str, Any] = await websocket.receive_json()
-            last_received = datetime.now(tz=UTC).timestamp()
-            action = message.get("action")
-
-            if action == "ping":
-                await websocket.send_json({"type": "pong"})
-
-            elif action == "subscribe":
-                bbox = message.get("bbox")
-                vehicle_ids = message.get("vehicle_ids", [])
-
-                # Reject global bounding boxes spanning the entire world
-                if (
-                    bbox
-                    and len(bbox) == 4
-                    and bbox[0] <= -170
-                    and bbox[2] >= 170
-                    and bbox[1] <= -80
-                    and bbox[3] >= 80
-                    and not vehicle_ids
-                ):
-                    await websocket.close(
-                        code=1008,
-                        reason="Global bbox without vehicle filter rejected",
-                    )
-                    return
-
-                if len(vehicle_ids) > 5000:
-                    await websocket.close(
-                        code=1008,
-                        reason="Subscription exceeds 5000 vehicle cap",
-                    )
-                    return
-
-                ws_manager.update_subscription(websocket, bbox, vehicle_ids)
-
-            elif action == "unsubscribe":
-                ws_manager.update_subscription(websocket, None, None)
-
-    except (WebSocketDisconnect, Exception):
+            raw = await ws.receive_text()
+            if len(raw) > 1024:
+                raise ValueError("Oversized client frame")
+            frame = json.loads(raw)
+            if not isinstance(frame, dict):
+                raise ValueError("Client frames must be objects")
+            if frame.get("type") == "ping":
+                hub.enqueue(client, {"type": "pong", "data": {}})
+    except (ValueError, HTTPException, TimeoutError):
+        await ws.close(code=1008, reason="Authentication or frame validation failed")
+    except WebSocketDisconnect:
         pass
     finally:
-        heartbeat_task.cancel()
-        ws_manager.disconnect(websocket)
+        if client:
+            hub.clients.discard(client)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

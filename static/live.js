@@ -1,118 +1,53 @@
-// Real-Time WebSocket Client, Bounding Box Synchronization & Connection Lifecycle
-let socket = null;
-let reconnectAttempts = 0;
-let positionCount = 0;
-let lastRateTimestamp = Date.now();
-const latencySamples = [];
-
-function connectWebSocket() {
-  const connDot = document.getElementById("conn-dot");
-  const connText = document.getElementById("conn-text");
-
-  connDot.className = "status-dot reconnecting";
-  connText.innerText = "Connecting...";
-
-  socket = new WebSocket(`${window.__WS_BASE__}/live`);
-
-  socket.onopen = () => {
-    connDot.className = "status-dot live";
-    connText.innerText = "Live";
-    reconnectAttempts = 0;
-    sendBboxSubscription();
-  };
-
-  socket.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "position") {
-        positionCount++;
-        updateVehicleMarker(msg.data);
-        if (msg.data.emitted_at) {
-          updateE2ELatency(msg.data.emitted_at);
-        }
-      } else if (msg.type === "alert") {
-        if (window.addAlertRow) {
-          window.addAlertRow(msg.data);
-        }
-      } else if (msg.type === "ping") {
-        socket.send(JSON.stringify({ action: "ping" }));
-      }
-    } catch (err) {
-      console.error("Malformed WebSocket payload:", err);
-    }
-  };
-
-  socket.onclose = (e) => {
-    connDot.className = "status-dot reconnecting";
-    connText.innerText = "Reconnecting...";
-
-    // Exponential backoff with random jitter, capped at 30 seconds
-    const baseDelay = Math.min(30000, 1000 * Math.pow(1.5, reconnectAttempts));
-    const jitter = Math.random() * 1000;
-    const delay = Math.min(30000, baseDelay + jitter);
-    reconnectAttempts++;
-
-    setTimeout(connectWebSocket, delay);
-  };
-
-  socket.onerror = () => {
-    socket.close();
-  };
+import {state,el,changed,acceptPosition,addAlert,toast} from "./config.js";
+import {showFences} from "./map.js";
+let socket=null, polling=null, retry=null, generation=0;
+export async function api(path,options={}) {
+  const response=await fetch(state.apiBase+"/api/v1"+path,{...options,headers:{"Authorization":"Bearer "+state.token,"Content-Type":"application/json",...options.headers},signal:AbortSignal.timeout(10000)});
+  if(!response.ok){if(response.status===401)throw new Error("Session expired. Connect and sign in again.");let message=`API returned ${response.status}`;try{message=(await response.json()).error?.message||message;}catch{}throw new Error(message);}
+  return response.json();
 }
-
-function sendBboxSubscription() {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    const bounds = map.getBounds();
-    const bbox = [
-      bounds.getWest(),
-      bounds.getSouth(),
-      bounds.getEast(),
-      bounds.getNorth(),
-    ];
-    socket.send(
-      JSON.stringify({
-        action: "subscribe",
-        bbox: bbox,
-        vehicle_ids: [],
-      })
-    );
+function status(connected,note) {
+  el("mode-name").textContent=connected?"Connected live API":"API connection interrupted";
+  el("mode-subtitle").textContent=note;el("mode-dot").className=`dot ${connected?"":"error"}`;
+}
+export function disconnect() {
+  generation++;clearInterval(polling);clearTimeout(retry);polling=null;retry=null;
+  if(socket){socket.onclose=null;socket.close();socket=null;}state.token=null;
+}
+async function snapshot() {
+  const data=await api("/fleet/live");state.ttl=data.live_ttl_seconds;
+  for(const point of data.positions)acceptPosition(point);changed();
+}
+export async function connect(base,username,password) {
+  const parsed=new URL(base);const local=["localhost","127.0.0.1","[::1]"].includes(parsed.hostname);
+  if(parsed.protocol!=="https:"&&!(parsed.protocol==="http:"&&local))throw new Error("Use HTTPS for a remote API; HTTP is allowed only for localhost.");
+  if(parsed.username||parsed.password||parsed.search||parsed.hash||!['','/'].includes(parsed.pathname))throw new Error("Enter only the backend origin, without credentials or an API path.");
+  const login=await fetch(parsed.origin+"/api/v1/auth/token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password}),signal:AbortSignal.timeout(10000)});
+  if(!login.ok) {let message=`Sign-in returned ${login.status}`;try{message=(await login.json()).error?.message||message;}catch{}throw new Error(message);}
+  const token=(await login.json()).access_token;
+  disconnect();state.token=token;state.apiBase=parsed.origin;
+  const [vehicles,fences,alerts]=await Promise.all([api("/vehicles"),api("/geofences"),api("/alerts")]);
+  state.mode="live";state.vehicles=vehicles;state.positions.clear();state.histories.clear();state.alerts=[];state.selected=vehicles[0]?.id||0;state.sourceNote="PostgreSQL + Redis";
+  for(const alert of alerts.reverse())addAlert(alert);showFences(fences);await snapshot();
+  el("source-explanation").textContent="Connected to a real backend. Demo telemetry is still generated by the Python GPS simulator, not by real vehicle hardware. Database writes, Redis handoff and WebSocket delivery are real.";
+  el("pipeline-note").textContent="PostgreSQL stores history. Outbox events retry Redis handoff; snapshots reconcile after reconnects.";
+  el("pipeline-status").textContent="Connected";el("return-demo").hidden=false;el("pause-simulation").hidden=true;el("map-context").textContent="Backend-observed synthetic telemetry";el("connect-button").textContent="Reconnect / sign in";
+  const current=generation;
+  function openSocket() {
+    if(current!==generation)return;
+    const wsBase=state.apiBase.replace(/^http/,"ws");socket=new WebSocket(wsBase+"/ws/live");
+    socket.onopen=()=>socket.send(JSON.stringify({type:"auth",token:state.token}));
+    socket.onmessage=event=>{
+      if(current!==generation)return;let message;try{message=JSON.parse(event.data);}catch{return;}
+      if(message.type==="position")acceptPosition(message.data);
+      if(message.type==="alert")addAlert(message.data);
+      if(message.type==="ready")status(message.data.realtime==="connected",message.data.realtime==="connected"?"Authenticated WebSocket • sample GPS data":"Waiting for Redis fan-out; REST snapshot available");
+      if(["heartbeat","status"].includes(message.type)){const ok=message.data.realtime==="connected";status(ok,ok?"WebSocket connected • sample GPS data":"Redis unavailable; reconciling from PostgreSQL");}
+      if(message.type==="gap")Promise.all([snapshot(),api("/alerts").then(alerts=>{for(const alert of alerts.reverse())addAlert(alert);})]).catch(error=>toast(error.message));changed();
+    };
+    socket.onclose=event=>{if(current!==generation)return;status(false,"Reconnecting; last observed data retained");if(event.code===1008){clearInterval(polling);toast("Session rejected or expired. Connect and sign in again.");return;}retry=setTimeout(openSocket,2000);};
+    socket.onerror=()=>status(false,"WebSocket unavailable; REST snapshot fallback");
   }
+  openSocket();polling=setInterval(async()=>{if(current!==generation)return;try{await snapshot();const health=await fetch(state.apiBase+"/api/v1/health",{signal:AbortSignal.timeout(5000)}).then(r=>r.json());el("pipeline-note").textContent=`Database: ${health.database}. Redis: ${health.redis}. Pending outbox events: ${health.outbox_pending??"unavailable"}.`;if(Number.isFinite(health.speed_limit_kmh))state.speedLimit=health.speed_limit_kmh;}catch(error){status(false,error.message);}},5000);
+  status(true,"Connecting WebSocket • sample GPS data");changed();
 }
-
-function updateE2ELatency(emittedAt) {
-  const emittedTime = new Date(emittedAt).getTime();
-  const latency = Date.now() - emittedTime;
-
-  if (latency >= 0) {
-    latencySamples.push(latency);
-    if (latencySamples.length > 50) latencySamples.shift();
-
-    // Compute p95 latency
-    const sorted = [...latencySamples].sort((a, b) => a - b);
-    const p95Idx = Math.floor(sorted.length * 0.95);
-    const p95 = sorted[p95Idx];
-    document.getElementById("stat-latency").innerText = `${p95} ms`;
-  }
-}
-
-// Positions per second and active vehicles rate monitor
-setInterval(() => {
-  const now = Date.now();
-  const elapsedSec = (now - lastRateTimestamp) / 1000.0;
-  const rate = Math.round(positionCount / elapsedSec);
-
-  const rateElem = document.getElementById("stat-rate");
-  const vehiclesElem = document.getElementById("stat-vehicles");
-  if (rateElem) rateElem.innerText = rate;
-  if (vehiclesElem) vehiclesElem.innerText = markers.size;
-
-  positionCount = 0;
-  lastRateTimestamp = now;
-}, 1000);
-
-// Debounced Map moveend bbox re-subscription (300ms)
-let moveDebounceTimer = null;
-map.on("moveend", () => {
-  clearTimeout(moveDebounceTimer);
-  moveDebounceTimer = setTimeout(sendBboxSubscription, 300);
-});

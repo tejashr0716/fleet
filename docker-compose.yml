@@ -1,83 +1,59 @@
 services:
-  timescaledb:
-    image: timescale/timescaledb:latest-pg16
-    container_name: fleet_timescaledb
+  db:
+    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_USER: fleet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
       POSTGRES_DB: fleet
-    ports:
-      - "5432:5432"
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d fleet"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
+      test: ["CMD-SHELL", "pg_isready -U fleet -d fleet"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
   redis:
     image: redis:7-alpine
-    container_name: fleet_redis
+    ports: ["127.0.0.1:6379:6379"]
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    volumes: ["redisdata:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
-      retries: 5
-
+      retries: 20
   api:
     build: .
-    container_name: fleet_api
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/fleet
+    env_file: .env
+    environment: &backend
+      DATABASE_URL: postgresql+asyncpg://fleet:${POSTGRES_PASSWORD:-fleet}@db:5432/fleet
       REDIS_URL: redis://redis:6379/0
-      CORS_ORIGINS: "*"
-      WS_ALLOWED_ORIGINS: "*"
-    ports:
-      - "8000:8000"
-
+    ports: ["127.0.0.1:8000:8000"]
+    command: ["sh", "-c", "alembic upgrade head && python -m simulator.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
   worker:
     build: .
-    container_name: fleet_worker
+    env_file: .env
+    environment: *backend
     command: ["python", "-m", "workers.position_consumer"]
     depends_on:
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@timescaledb:5432/fleet
-      REDIS_URL: redis://redis:6379/0
-
-  reclaimer:
-    build: .
-    container_name: fleet_reclaimer
-    command: ["python", "-m", "workers.reclaimer"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      REDIS_URL: redis://redis:6379/0
-
+      api: {condition: service_healthy}
   simulator:
     build: .
-    container_name: fleet_simulator
-    command: ["python", "-m", "simulator.run", "--vehicles", "1000", "--rate", "1.0", "--transport", "http", "--url", "http://api:8000/api/v1/positions/batch"]
+    env_file: .env
+    environment: *backend
+    command: ["python", "-m", "simulator.run", "--url", "http://api:8000", "--trigger-alerts"]
+    profiles: ["demo"]
     depends_on:
-      - api
-    environment:
-      API_BASE_URL: http://api:8000/api/v1
-
+      api: {condition: service_healthy}
+      worker: {condition: service_started}
 volumes:
-  timescale_data:
-  redis_data:
+  pgdata:
+  redisdata:

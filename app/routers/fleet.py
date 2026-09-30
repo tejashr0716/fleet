@@ -1,50 +1,35 @@
-"""Fleet aggregation, last-known live state, and H3 heatmap router."""
+from fastapi import APIRouter, Depends, Query, Request
 
-from __future__ import annotations
+from app.repositories.position_repo import latest_rows, nearest_database, position_dict
+from app.security import require_user
+from app.services.live_state import nearest_cached
 
-from typing import Annotated, Any
-
-from fastapi import APIRouter, Depends, Query
-from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db import get_db_session
-from app.redis_client import get_redis_client
-from app.repositories.position_repo import PositionRepository
-from app.services.live_state import LiveStateManager
-
-router = APIRouter(tags=["Fleet"])
+router = APIRouter(prefix="/fleet", tags=["Live fleet"], dependencies=[Depends(require_user)])
 
 
-@router.get("/fleet/live")
-async def get_fleet_live(
-    redis: Annotated[Redis, Depends(get_redis_client)],
-    min_lon: float | None = Query(default=None),
-    min_lat: float | None = Query(default=None),
-    max_lon: float | None = Query(default=None),
-    max_lat: float | None = Query(default=None),
-) -> list[dict[str, Any]]:
-    """Retrieve last-known positions of all active vehicles, optionally bounded by bbox."""
-    bbox = None
-    if min_lon is not None and min_lat is not None and max_lon is not None and max_lat is not None:
-        bbox = [min_lon, min_lat, max_lon, max_lat]
-    return await LiveStateManager.get_all_live(redis, bbox=bbox)
+@router.get("/live")
+async def snapshot(request: Request):
+    async with request.app.state.db.sessions() as session:
+        return {
+            "positions": [position_dict(p) for p in await latest_rows(session)],
+            "source_used": "postgresql",
+            "live_ttl_seconds": request.app.state.settings.live_ttl_seconds,
+        }
 
 
-@router.get("/fleet/stats")
-async def get_fleet_stats(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> dict[str, Any]:
-    """Retrieve aggregate fleet statistics computed from the 1-minute continuous aggregate."""
-    repo = PositionRepository(db)
-    return await repo.get_fleet_stats()
-
-
-@router.get("/h3/cells")
-async def get_h3_cells(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-    resolution: int = Query(default=8, ge=6, le=10),
-) -> list[dict[str, Any]]:
-    """Retrieve active H3 cell densities over the last 15 minutes for live heatmap rendering."""
-    repo = PositionRepository(db)
-    return await repo.get_h3_density(resolution=resolution)
+@router.get("/nearest")
+async def nearest(
+    request: Request,
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    limit: int = Query(5, ge=1, le=20),
+):
+    settings = request.app.state.settings
+    cached = await nearest_cached(
+        request.app.state.redis, lat, lon, limit, settings.live_ttl_seconds
+    )
+    if cached is not None:
+        return {"positions": cached, "source_used": "redis_geo", "radius_m": 25000}
+    async with request.app.state.db.sessions() as session:
+        result = await nearest_database(session, lat, lon, limit, settings.live_ttl_seconds)
+        return {"positions": result, "source_used": "postgresql_scan", "radius_m": 25000}

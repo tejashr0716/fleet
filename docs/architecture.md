@@ -1,77 +1,46 @@
-# System Architecture & Delivery Semantics
+# Architecture and design decisions
 
-## Architecture Overview
+## Scope
 
-Fleet is an asynchronous, high-throughput real-time telemetry processing platform designed to track 1,000+ continuous moving assets with sub-250ms end-to-end fan-out latency.
+A demonstrable, single-fleet backend project built around Python, FastAPI, PostgreSQL, Redis and REST APIs. The source of GPS data is a synthetic simulator. The server runs actual database transactions, actual Redis operations and actual WebSocket fan-out. The public static page is a separate, clearly labeled browser simulation until explicitly connected.
 
-```
-                                  +-----------------------+
-                                  | Telemetry Ingest      |
-                                  | (HTTP /ws/ingest)     |
-                                  +-----------+-----------+
-                                              |
-                                              | XADD (Non-blocking)
-                                              v
-                                  +-----------------------+
-                                  | Redis 7 Streams       |
-                                  | stream:positions      |
-                                  +-----------+-----------+
-                                              |
-                                              | XREADGROUP (Consumer Group: cg:positions)
-                                              v
-                              +-------------------------------+
-                              | Micro-batch Worker            |
-                              | (Batch <= 500 or 200ms)       |
-                              +---------------+---------------+
-                                              |
-               +------------------------------+-------------------------------+
-               |                                                              |
-               v                                                              v
-+-------------------------------+                            +-------------------------------+
-| TimescaleDB (PostgreSQL 16)   |                            | Redis In-Memory State         |
-| - Hypertable 'positions'      |                            | - HSET fleet:live:{id}        |
-| - 1-min & 1-hour Aggregates   |                            | - GEOADD fleet:geo            |
-| - Chunk Compression & Pruning |                            | - PUBLISH fleet:events        |
-+-------------------------------+                            +---------------+---------------+
-               | (Commit Success)                                             |
-               v                                                              v
-      +-----------------+                                    +--------------------------------+
-      | XACK Stream Msg |                                    | API Pub/Sub Listener Lifespan  |
-      +-----------------+                                    +---------------+----------------+
-                                                                             |
-                                                                             | Spatial Bbox Filter
-                                                                             v
-                                                              +-------------------------------+
-                                                              | WebSocket Broadcast (/ws/live)|
-                                                              | Leaflet Browser Map Client    |
-                                                              +-------------------------------+
-```
+## Durable ingestion, not an optimistic animation
 
-## Delivery Semantics: At-Least-Once with Idempotency
+`app/repositories/position_repo.py` locks the affected vehicle rows in sorted ID order, validates registration, sorts each batch by timestamp, inserts positions with `ON CONFLICT DO NOTHING`, evaluates transition rules, and inserts outbox events in the same transaction. Only after commit does the API return 202.
 
-### Why not Exactly-Once?
-In distributed streaming pipelines (specifically network ingest via HTTP/WebSockets through Redis Streams to a relational database), true "exactly-once" delivery across independent distributed state boundaries is impossible without expensive two-phase commits (2PC) that destroy high-throughput real-time streaming SLAs.
+The unique `(vehicle_id, recorded_at)` key defines a retry. A conflicting payload at that key is not a replacement: first-write-wins. Device identity beyond a shared demo API key is intentionally out of scope. A real deployment should give each device revocable, independently scoped credentials.
 
-### How At-Least-Once Delivery is Guaranteed
-1. **Redis Streams Ingress**: Incoming telemetry is assigned an immutable, monotonically increasing millisecond sequence ID (e.g. `1700000000000-0`) upon `XADD`.
-2. **Consumer Group Tracking**: The consumer worker reads messages via `XREADGROUP`. Messages remain in the Pending Entries List (PEL) until explicitly acknowledged.
-3. **Commit-Before-Ack**: The worker executes database insert operations and flushes state **before** invoking `XACK`. If the worker crashes mid-batch, the unacknowledged messages are reclaimed by `workers/reclaimer.py` via `XAUTOCLAIM`.
+## Outbox vs a Redis-first queue
 
-### Achieving Pure Idempotency
-Because re-delivery can occur if a worker crashes post-database-commit but prior to `XACK`, idempotency is enforced at the database storage engine:
-```sql
-ALTER TABLE positions ADD PRIMARY KEY (vehicle_id, time);
+The database is the source of truth. A Redis-only ingress acknowledgment could lose accepted telemetry after Redis failure unless persistence/replication guarantees were specified. The small demo chooses a database transaction and an outbox instead. The cost is synchronous database latency per accepted batch; this is not the fastest possible architecture and no high-ingestion-rate claim is made.
 
-INSERT INTO positions (vehicle_id, time, lat, lon, speed_kmh, heading, accuracy_m, h3_r8, h3_r7)
-VALUES (:vehicle_id, :time, :lat, :lon, :speed_kmh, :heading, :accuracy_m, :h3_r8, :h3_r7)
-ON CONFLICT (vehicle_id, time) DO NOTHING;
-```
-If a batch or single message is processed multiple times:
-- Database row count remains strictly invariant (`ON CONFLICT DO NOTHING`).
-- Redis Hashes (`fleet:live:{id}`) update in-place with idempotent state replacements.
-- Re-broadcasting over WebSocket triggers client coordinate overwrites with identical timestamps.
+The worker selects pending events with `FOR UPDATE SKIP LOCKED`. Handoff is retried after errors. Publishing and the database delivery marker cannot share a distributed transaction; therefore a crash can produce a duplicate publication. The event ID identifies a delivery attempt's logical event. The client ignores older/equal position timestamps and deduplicates alert identities. Pub/Sub can miss a viewer entirely; REST history remains available.
 
-## Dead Letter Queue (DLQ) & Failure Recovery
-- `workers/reclaimer.py` monitors messages pending for more than 60 seconds.
-- Every claim increments a message-specific retry key: `fleet:retry:<msg_id>`.
-- If a corrupted or poisoned message fails 5 consecutive times, it is permanently shifted to `stream:positions:dlq`, acknowledged, and deleted from the active pipeline to prevent stream starvation.
+## Redis roles
+
+1. Latest-position keys have a TTL.
+2. GEOADD/GEOSEARCH supply fresh nearest-vehicle queries for the demo region.
+3. Pub/Sub distributes events across independently running API instances.
+4. Atomic Lua protects latest-position freshness and login rate-limit counters.
+
+GEO members are cross-checked against TTL keys; stale members never become a fresh vehicle. Nearest search is intentionally bounded to 1,000 geo candidates within 25 km. This is sufficient for a 12-vehicle demo, not evidence of arbitrary fleet-scale correctness. Polar-coordinate queries use the database fallback because Redis GEO uses a Mercator latitude limit.
+
+## History and SQL
+
+Ordinary PostgreSQL tables hold historical samples. The unique vehicle/time key also supplies the B-tree used for per-vehicle time windows. `DISTINCT ON (vehicle_id)` selects the latest sample per vehicle. A bounded request returns the most recent N matching observations in ascending time order, with `has_more` explicitly indicating truncation.
+
+This avoids adding TimescaleDB before the dataset needs it. A future larger history workload should measure plans and row counts before choosing partitioning or time-series extensions.
+
+## Rules, not ML
+
+Speeding alerts trigger only when crossing above the configured limit. Circular geofence alerts compare Haversine membership of the previous latest and new latest points. Late history does not invent live transitions. GPS jitter can cause boundary chatter: hysteresis/accuracy handling is explicitly not implemented. Trace sessions split at a five-minute silence gap; their straight-line point-to-point distance is not road-network map matching.
+
+## Viewer delivery
+
+JWT in the first WebSocket frame avoids placing secrets in query strings/logs. Allowed origins are checked. Each viewer has one bounded 64-event queue and one writer task. Old queued frames can be dropped; a gap message requests a database snapshot. Tokens have expiry, and the viewer must sign in again when expired.
+
+The dashboard makes a five-second snapshot reconciliation request because realtime Pub/Sub is best effort. Reconnecting never silently switches to browser fixtures. If the backend becomes unavailable, the UI retains last observations and shows a connection interruption.
+
+## Deployment boundaries
+
+A static Pages publication is not a backend deployment. Real services require separate persistent infrastructure and HTTPS. The included Compose setup binds application/database/cache ports to loopback by default. Production mode rejects conspicuous demo secrets, but the project is not a complete production security posture: single account, no token revocation, no multi-tenancy, no device-level rotation or audit system.

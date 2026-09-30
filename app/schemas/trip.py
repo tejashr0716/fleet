@@ -1,22 +1,11 @@
-"""Trip response schemas."""
-
-from __future__ import annotations
-
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from app.schemas.common import Schema
 
 
-class TripRead(BaseModel):
-    """Serialized vehicle trip summary."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
+class TripOut(Schema):
     vehicle_id: int
     started_at: datetime
     ended_at: datetime
+    point_count: int
     distance_km: float
-    avg_speed_kmh: float
-    max_speed_kmh: float
-    position_count: int

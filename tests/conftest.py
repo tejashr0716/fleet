@@ -1,60 +1,76 @@
-"""Pytest configuration, async client fixtures, and test dependencies."""
+import os
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from __future__ import annotations
+import httpx
+import pytest_asyncio
+from sqlalchemy import text
 
-import asyncio
-from collections.abc import AsyncGenerator
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-from httpx import ASGITransport, AsyncClient
-from redis.asyncio import Redis
-
-from app.main import app
-from app.redis_client import get_redis_client
+from app.config import Settings
+from app.main import create_app
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> AsyncGenerator[asyncio.AbstractEventLoop, None]:
-    """Create session-scoped event loop for asyncio test execution."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+@dataclass
+class System:
+    app: object
+    client: httpx.AsyncClient
+    settings: Settings
+    headers: dict
+    key: dict
+
+    def point(self, **changes):
+        return {
+            "vehicle_id": 1,
+            "lat": 12.9716,
+            "lon": 77.5946,
+            "speed_kmh": 40,
+            "heading": 90,
+            "recorded_at": datetime.now(UTC).isoformat(),
+            **changes,
+        }
 
 
-@pytest.fixture
-def mock_redis() -> Any:
-    """Mock Redis client for offline unit and integration tests."""
-    mock = AsyncMock(spec=Redis)
-    mock.xadd = AsyncMock(return_value="1700000000000-0")
-    mock.xlen = AsyncMock(return_value=5)
-    mock.ping = AsyncMock(return_value=True)
-
-    # Pipeline mock
-    pipe_mock = AsyncMock()
-    pipe_mock.xadd = MagicMock()
-    pipe_mock.execute = AsyncMock(return_value=["1700000000000-0", "1700000000000-1"])
-    pipe_mock.hset = MagicMock()
-    pipe_mock.geoadd = MagicMock()
-    pipe_mock.publish = MagicMock()
-    pipe_mock.xack = MagicMock()
-    pipe_mock.hget = MagicMock()
-    pipe_mock.hgetall = MagicMock()
-
-    mock.pipeline = MagicMock(return_value=pipe_mock)
-    mock.scan_iter = MagicMock()
-    return mock
-
-
-@pytest.fixture
-async def client(mock_redis: Any) -> AsyncGenerator[AsyncClient, None]:
-    """Asynchronous HTTP test client bound to ASGI FastAPI app."""
-    # Override Redis dependency with mock to guarantee zero network failure during test suite
-
-    app.dependency_overrides[get_redis_client] = lambda: mock_redis
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        yield ac
-
-    app.dependency_overrides.clear()
+@pytest_asyncio.fixture
+async def system():
+    url = os.getenv(
+        "TEST_DATABASE_URL",
+        os.getenv("DATABASE_URL", "postgresql+asyncpg://fleet:fleet@localhost:5432/fleet_test"),
+    )
+    redis_url = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/1")
+    if not url.split("?")[0].endswith("/fleet_test") or not redis_url.endswith("/1"):
+        raise RuntimeError("Tests refuse to reset any database except fleet_test and Redis DB 1")
+    settings = Settings(_env_file=None, environment="test", database_url=url, redis_url=redis_url)
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        async with app.state.db.engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "TRUNCATE fleet_v2.outbox, fleet_v2.alerts, fleet_v2.positions, fleet_v2.geofences, fleet_v2.vehicles RESTART IDENTITY CASCADE"
+                )
+            )
+        await app.state.redis.flushdb()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://test"
+        ) as client:
+            token = await client.post(
+                "/api/v1/auth/token",
+                json={
+                    "username": settings.admin_username,
+                    "password": settings.admin_password.get_secret_value(),
+                },
+            )
+            assert token.status_code == 200
+            auth = {"Authorization": "Bearer " + token.json()["access_token"]}
+            result = await client.post(
+                "/api/v1/vehicles",
+                headers=auth,
+                json={"name": "Fleet 01", "registration": "DEMO-001"},
+            )
+            assert result.status_code == 201
+            yield System(
+                app,
+                client,
+                settings,
+                auth,
+                {"X-API-Key": settings.device_api_key.get_secret_value()},
+            )

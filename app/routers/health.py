@@ -1,63 +1,42 @@
-"""Health router verifying DB, Redis connectivity and consumer stream lag."""
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select, text
 
-from __future__ import annotations
+from app.models import OutboxEvent
 
-from typing import Annotated, Any
-
-from fastapi import APIRouter, Depends
-from redis.asyncio import Redis
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.config import settings
-from app.db import get_db_session
-from app.errors import ServiceUnavailableError
-from app.redis_client import get_redis_client
-
-router = APIRouter(prefix="/health", tags=["Health"])
+router = APIRouter(tags=["Health"])
 
 
-@router.get("", response_model=dict[str, Any])
-async def health_check(
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-    redis: Annotated[Redis, Depends(get_redis_client)],
-) -> dict[str, Any]:
-    """Perform health verification across database, Redis, and consumer stream backlog.
-
-    Raises:
-        ServiceUnavailableError: When Postgres/Redis is down or consumer backlog exceeds threshold.
-
-    Returns:
-        dict[str, Any]: System health status report.
-    """
-    # 1. Database check
+@router.get("/health")
+async def health(request: Request):
+    database, redis, backlog = False, False, None
     try:
-        await db.execute(text("SELECT 1"))
-    except Exception as exc:
-        raise ServiceUnavailableError("PostgreSQL unreachable", {"error": str(exc)}) from exc
-
-    # 2. Redis check
-    try:
-        await redis.ping()
-    except Exception as exc:
-        raise ServiceUnavailableError("Redis unreachable", {"error": str(exc)}) from exc
-
-    # 3. Stream lag check
-    try:
-        stream_len = await redis.xlen(settings.stream_name)
-        if stream_len > settings.consumer_lag_unhealthy:
-            raise ServiceUnavailableError(
-                "Consumer lag exceeded threshold",
-                {"stream_len": stream_len, "threshold": settings.consumer_lag_unhealthy},
+        async with request.app.state.db.sessions() as session:
+            await session.execute(text("SELECT 1"))
+            backlog = await session.scalar(
+                select(func.count())
+                .select_from(OutboxEvent)
+                .where(OutboxEvent.delivered_at.is_(None))
             )
-    except Exception as exc:
-        if isinstance(exc, ServiceUnavailableError):
-            raise
-        stream_len = 0
-
-    return {
-        "status": "healthy",
-        "database": "connected",
-        "redis": "connected",
-        "consumer_lag": stream_len,
-    }
+            database = True
+    except Exception:
+        pass
+    try:
+        redis = bool(await request.app.state.redis.ping())
+    except Exception:
+        pass
+    state = "healthy" if database and redis else ("degraded" if database else "unavailable")
+    return JSONResponse(
+        status_code=200 if database else 503,
+        content={
+            "status": state,
+            "database": "connected" if database else "unavailable",
+            "redis": "connected" if redis else "unavailable",
+            "outbox_pending": backlog,
+            "websocket_clients": len(request.app.state.hub.clients),
+            "pubsub_connected": request.app.state.hub.connected,
+            "sample_data": True,
+            "schema_version": "fleet_v2",
+            "speed_limit_kmh": request.app.state.settings.speed_limit_kmh,
+        },
+    )

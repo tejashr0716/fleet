@@ -1,36 +1,30 @@
-"""Positions hypertable model storing real-time telemetry."""
+from datetime import UTC, datetime
 
-from __future__ import annotations
-
-from datetime import datetime
-
-from sqlalchemy import BigInteger, DateTime, Double, Float, ForeignKey, SmallInteger
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.vehicle import Base
+from app.db import Base
 
 
 class Position(Base):
-    """Core positions hypertable mapped for raw telemetry storage.
-
-    Primary key (vehicle_id, time) ensures that duplicate messages replayed from
-    Redis Streams or network retries are dropped via ON CONFLICT DO NOTHING.
-    """
-
     __tablename__ = "positions"
+    __table_args__ = (UniqueConstraint("vehicle_id", "recorded_at", name="uq_vehicle_time"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    vehicle_id: Mapped[int] = mapped_column(ForeignKey("fleet_v2.vehicles.id"))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    speed_kmh: Mapped[float] = mapped_column(Float)
+    heading: Mapped[float] = mapped_column(Float, default=0)
 
-    vehicle_id: Mapped[int] = mapped_column(
-        ForeignKey("vehicles.id", ondelete="CASCADE"),
-        primary_key=True,
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox"
+    __table_args__ = (Index("ix_outbox_delivery", "delivered_at", "id"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
-    time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        primary_key=True,
-    )
-    lat: Mapped[float] = mapped_column(Double, nullable=False)
-    lon: Mapped[float] = mapped_column(Double, nullable=False)
-    speed_kmh: Mapped[float] = mapped_column(Float, nullable=False)
-    heading: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    accuracy_m: Mapped[float] = mapped_column(Float, nullable=False)
-    h3_r8: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    h3_r7: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1,0 +1,67 @@
+{
+  "build_version": "2.0.0",
+  "base_revision": "7882ded6b3b661c7bf35ede3cdca39424a7c9d14",
+  "backend_tests": {
+    "passed": 36,
+    "dependencies": "real PostgreSQL 15.18 and Redis 6.2.20; isolated fleet_test and Redis DB 1",
+    "warning": "one upstream TestClient deprecation warning"
+  },
+  "dashboard_checks": {
+    "checks": 22,
+    "passed": [
+      "public mode honestly labeled simulation",
+      "desktop has no horizontal overflow",
+      "cab filter returns four actual fixtures",
+      "search has a real empty state",
+      "keyboard focus survives live list refresh",
+      "simulation history never claims PostgreSQL persistence",
+      "chart matches its exact-observation table",
+      "pause preserves actual last observation",
+      "remote HTTP credentials blocked before network request",
+      "dashboard connects to real local API",
+      "real Redis-to-WebSocket position frames arrive",
+      "live data source label matches real services",
+      "password cleared after connection",
+      "no tokens or credentials persisted in browser storage",
+      "route history is fetched from real PostgreSQL",
+      "nearest query uses actual Redis GEO",
+      "return to simulation is explicit user action",
+      "mobile has no horizontal overflow",
+      "mobile dialog fits viewport with error state",
+      "dialog closes with keyboard escape",
+      "dark/reduced-motion mode has no horizontal overflow",
+      "no application runtime errors"
+    ],
+    "websocket_position_frames": 48,
+    "application_errors": []
+  },
+  "visual_review": {
+    "desktop_1440": true,
+    "mobile_390": true,
+    "live_api": true,
+    "mobile_error_dialog": true,
+    "dark_reduced_motion": true
+  },
+  "smoke_probes": {
+    "ingest_samples": 12,
+    "websocket_e2e_samples": 10,
+    "history_samples": 12,
+    "errors": 0,
+    "scope": "synthetic smoke checks, not throughput/capacity guarantees"
+  },
+  "environment": {
+    "platform": "Linux-6.18.49-x86_64-with-glibc2.34",
+    "python": "3.13.14",
+    "user_laptop_inspected": false
+  },
+  "portable_configuration": {
+    "compose_yaml": "parsed",
+    "docker_container_startup": "not executed in this environment",
+    "github_actions": "configured but not run because publishing lacks write permissions"
+  },
+  "publication": {
+    "repository_changed": false,
+    "pages_changed": false,
+    "blocker": "GitHub MCP write action returned 403"
+  }
+}
