@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime
 
 import httpx
 import pytest
@@ -158,7 +159,9 @@ async def test_api_cloud_auth_limits_and_stop(system):
 async def test_api_cloud_row_budget(system):
     system.app.state.settings.cloud_demo_position_budget = 12
     async with system.app.state.db.sessions() as session:
-        session.add(Position(**system.point()))
+        point = system.point()
+        point["recorded_at"] = datetime.fromisoformat(point["recorded_at"])
+        session.add(Position(**point))
         await session.commit()
     result = await system.client.post("/api/v1/demo/start", json={}, headers=system.headers)
     assert result.status_code == 409

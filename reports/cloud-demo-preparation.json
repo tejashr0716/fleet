@@ -38,5 +38,11 @@
   "render_resources_created": 0,
   "hosting_status": "prepared, not deployed",
   "billing_status": "provider controls must be inspected; free compute does not guarantee no usage overages",
-  "route_interpolation": "negative first-tick wraparound corrected and regression-tested"
+  "route_interpolation": "negative first-tick wraparound corrected and regression-tested",
+  "first_integration_run": {
+    "passed": 53,
+    "failed": 1,
+    "issue": "New ORM test fixture supplied an ISO string to a datetime column; fixture now converts to datetime. Full rerun pending.",
+    "url": "https://github.com/tejashr0716/fleet/actions/runs/36752206315/job/110013378032"
+  }
 }
