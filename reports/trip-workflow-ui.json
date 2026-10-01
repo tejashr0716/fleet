@@ -1,0 +1,66 @@
+{
+  "checks": [
+    {
+      "name": "Empty preview has no invented registered fleet or automatic backend requests",
+      "status": "passed"
+    },
+    {
+      "name": "Register vehicle -> ready to start, identifier normalized",
+      "status": "passed"
+    },
+    {
+      "name": "Duplicate registration displays an actionable error",
+      "status": "passed"
+    },
+    {
+      "name": "Start simulated trip -> active controls, route and initial sample",
+      "status": "passed"
+    },
+    {
+      "name": "Live preview samples and trip-scoped speeding test alert appear",
+      "status": "passed"
+    },
+    {
+      "name": "Finish stops samples; saved preview record reopens with exact coordinates and alerts",
+      "status": "passed"
+    },
+    {
+      "name": "Responsive workflow and forms fit 1440, 1024, 768, 390 and 320px",
+      "status": "passed"
+    },
+    {
+      "name": "Preview made zero backend requests",
+      "status": "passed"
+    },
+    {
+      "name": "Reload clears preview as labeled, not falsely persisted",
+      "status": "passed"
+    },
+    {
+      "name": "Live API hides seeded fixtures rather than pretending they are newly registered vehicles",
+      "status": "passed"
+    },
+    {
+      "name": "Live registration/start/finish/review use JWT-protected API routes (mock contract)",
+      "status": "passed"
+    },
+    {
+      "name": "JWT not stored; password cleared after sign-in",
+      "status": "passed"
+    },
+    {
+      "name": "Reconnect loads stored completed-trip review (mock contract)",
+      "status": "passed"
+    },
+    {
+      "name": "Switching modes is explicit; live records are not relabeled as browser fixtures",
+      "status": "passed"
+    },
+    {
+      "name": "No browser runtime exceptions",
+      "status": "passed"
+    }
+  ],
+  "scope": "Local browser preview + mocked API contract; not hosted backend evidence",
+  "errors": []
+}

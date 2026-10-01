@@ -1,0 +1,114 @@
+{
+  "scope": "Real hosted FastAPI/PostgreSQL/Redis-compatible KV and authenticated WebSocket; GPS is synthetic",
+  "api_url": "https://fleet-tejashr0716-demo.onrender.com",
+  "status": "passed",
+  "tested_backend_commit": "5eb8a8164399ae847411717efd0136cd3c231d28",
+  "render_deploy_id": "dep-dauviql9fdbs73aj93kg",
+  "ci_run_url": "https://github.com/tejashr0716/fleet/actions/runs/36822140038",
+  "checks": [
+    {
+      "name": "Deployed managed-trip API and real dependencies are healthy",
+      "status": "passed"
+    },
+    {
+      "name": "Trip start is protected before sign-in",
+      "status": "passed"
+    },
+    {
+      "name": "Private owner sign-in returns a JWT",
+      "status": "passed"
+    },
+    {
+      "name": "All pre-upgrade vehicle identities are preserved",
+      "status": "passed"
+    },
+    {
+      "name": "Legacy sample vehicles are marked without deleting them",
+      "status": "passed"
+    },
+    {
+      "name": "All 2,184 pre-upgrade synthetic history records are still readable",
+      "status": "passed"
+    },
+    {
+      "name": "Vehicle registration creates a non-seeded PostgreSQL record",
+      "status": "passed"
+    },
+    {
+      "name": "Duplicate vehicle registration is rejected",
+      "status": "passed"
+    },
+    {
+      "name": "WebSocket authenticates and reports connected Redis fan-out",
+      "status": "passed"
+    },
+    {
+      "name": "Explicit start creates an active synthetic trip",
+      "status": "passed"
+    },
+    {
+      "name": "One active trip per vehicle is enforced",
+      "status": "passed"
+    },
+    {
+      "name": "New trip samples stream over the real authenticated WebSocket",
+      "status": "passed"
+    },
+    {
+      "name": "Deliberate speeding fixture produces a trip-scoped live alert",
+      "status": "passed"
+    },
+    {
+      "name": "Redis GEO contains the new vehicle position",
+      "status": "passed"
+    },
+    {
+      "name": "Trip detail reads its stored route and alert from PostgreSQL",
+      "status": "passed"
+    },
+    {
+      "name": "All reviewed samples and alerts belong to this explicit trip",
+      "status": "passed"
+    },
+    {
+      "name": "Finish durably closes the trip with a manual reason",
+      "status": "passed"
+    },
+    {
+      "name": "Repeated finish is idempotent",
+      "status": "passed"
+    },
+    {
+      "name": "No new GPS samples are stored after finish",
+      "status": "passed"
+    },
+    {
+      "name": "Historical retry after completion does not duplicate a sample",
+      "status": "passed"
+    },
+    {
+      "name": "New samples for a completed trip are rejected",
+      "status": "passed"
+    },
+    {
+      "name": "A new session can reopen the saved completed trip",
+      "status": "passed"
+    },
+    {
+      "name": "Automatic time limit stops and saves a separate trip",
+      "status": "passed"
+    },
+    {
+      "name": "Second trip history does not borrow the first trip route or alerts",
+      "status": "passed"
+    },
+    {
+      "name": "Outbox drains and hosted dependencies remain healthy",
+      "status": "passed"
+    }
+  ],
+  "preserved_vehicles": 12,
+  "preserved_points": 2184,
+  "cleanup": "All verification trips were stopped",
+  "note": "Backend code is unchanged in subsequent frontend asset-versioning commits. This record is restored from the retained successful verification output."
+}
