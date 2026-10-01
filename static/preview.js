@@ -1,4 +1,4 @@
-import { distanceM } from "./config.js";
+import { distanceM } from "./config.js?v=3";
 export class PreviewFleet {
   constructor(routes) {
     this.routes = routes;

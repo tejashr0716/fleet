@@ -50,3 +50,5 @@ Trace distance is the straight-line sum between stored coordinates, **not road d
 - Live list loads the most recent 200 trips. A direct trip detail remains available by ID. A detail response returns at most 5,000 points and 200 alerts, explicitly flags truncation, and does not invent a whole-trip distance from a partial trace.
 - One API process is supported for in-process simulated trip tasks. The free deployment uses one process. A production multi-worker deployment would need a separate durable scheduler and per-user authorization.
 - Temporary free hosting sleeps and has an expiring PostgreSQL database. It is not always-on production hosting. Stop/finish trips after presenting.
+
+Finishing is explicit: closing the browser or returning to preview does not cancel a server-side trip. Finish it first, or let its bounded automatic time limit stop it. A running browser-preview trip is marked interrupted when you connect the API.

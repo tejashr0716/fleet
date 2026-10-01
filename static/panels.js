@@ -7,7 +7,7 @@ import {
   visibleVehicles,
   activeTrip,
   routeNames,
-} from "./config.js";
+} from "./config.js?v=3";
 let chart;
 const text = (id, value) => (el(id).textContent = value);
 const make = (tag, className, value) => {

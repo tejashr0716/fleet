@@ -1,8 +1,8 @@
-import { state, el, toast, visibleVehicles, activeTrip } from "./config.js";
-import { PreviewFleet } from "./preview.js";
-import { LiveFleet } from "./live.js";
-import { initializeMap, renderMap, fitMap } from "./map.js";
-import { initializePanels, renderPanels } from "./panels.js";
+import { state, el, toast, visibleVehicles, activeTrip } from "./config.js?v=3";
+import { PreviewFleet } from "./preview.js?v=3";
+import { LiveFleet } from "./live.js?v=3";
+import { initializeMap, renderMap, fitMap } from "./map.js?v=3";
+import { initializePanels, renderPanels } from "./panels.js?v=3";
 let preview,
   service,
   timer,

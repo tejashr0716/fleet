@@ -14,6 +14,8 @@ Fleet now has a concrete trip workflow, not just an automatically moving sample 
 
 The public page starts empty in **browser preview**; its records exist only in this tab. **Connect live API** uses the real backend and private owner credentials. Registration, explicit trip records, GPS history and alerts are persisted in PostgreSQL; Redis and authenticated WebSockets provide live updates. GPS remains synthetic in both modes.
 
+**Verification:** [real PostgreSQL/Redis CI](https://github.com/tejashr0716/fleet/actions/runs/36822140038) passed, and [25 hosted workflow checks](reports/trip-workflow-hosted.json) verified the new lifecycle and preserved the previous history.
+
 The temporary free backend is [here](https://fleet-tejashr0716-demo.onrender.com/static/index.html). Free instances may need about a minute to wake. Its disposable PostgreSQL database expires **2026-10-30 at 18:12 UTC (23:42 IST)**; no paid plan or always-on guarantee is implied. [Hosting limits](docs/render-free-demo.md).
 
 **Python · FastAPI · PostgreSQL · Redis · REST APIs · JWT · HTML/CSS/JavaScript · Chart.js**

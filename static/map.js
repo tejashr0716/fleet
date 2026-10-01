@@ -1,4 +1,4 @@
-import { el } from "./config.js";
+import { el } from "./config.js?v=3";
 let map,
   markerLayer,
   trace,
