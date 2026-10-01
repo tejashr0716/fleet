@@ -12,3 +12,11 @@ htmlcov/
 reports/*.json
 !reports/validation.json
 !reports/README.md
+
+node_modules/
+test-results/
+playwright-report/
+
+# Public, scoped workflow verification reports (no credentials).
+!reports/trip-workflow-ui.json
+!reports/trip-workflow-hosted.json

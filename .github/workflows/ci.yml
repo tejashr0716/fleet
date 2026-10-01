@@ -32,3 +32,14 @@ jobs:
       - run: pytest -q
       - name: JavaScript syntax checks
         run: for f in static/*.js; do node --check "$f"; done
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci
+      - run: npm run test:preview
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fleet-ui-check
+          path: /tmp/fleet-ui-check

@@ -1,46 +1,394 @@
-import {state,el,listeners,changed,acceptPosition,addAlert,toast} from "./config.js";
-import {initializeMap,renderMap,fitFleet,showFences,showTrace,clearTrace} from "./map.js";
-import {initializePanels,renderPanels} from "./panels.js";
-import {connect,disconnect,api,refreshCloudDemo} from "./live.js";
-let routes=[],timer=null,tick=0;
-function routePoint(route,step){const part=step/120,seg=Math.floor(part)%(route.length-1),f=part%1;return {lat:route[seg][0]+(route[seg+1][0]-route[seg][0])*f,lon:route[seg][1]+(route[seg+1][1]-route[seg][1])*f};}
-function simulate() {
-  if(state.mode!=="simulation"||state.paused)return;
-  for(let i=0;i<state.vehicles.length;i++) {
-    const v=state.vehicles[i],pos=routePoint(routes[i%routes.length],tick+i*37),prior=state.positions.get(v.id);
-    let speed=Math.max(0,35+15*Math.sin(tick/9+i*.8));if(i===0&&tick%40>=15&&tick%40<=17)speed=92;
-    const point={id:tick*12+i+1,vehicle_id:v.id,...pos,speed_kmh:Math.round(speed*10)/10,heading:(tick*2+i*30)%360,recorded_at:new Date().toISOString()};
-    acceptPosition(point);
-    if(speed>80&&(!prior||prior.speed_kmh<=80))addAlert({vehicle_id:v.id,kind:"speeding",recorded_at:point.recorded_at,details:{speed_kmh:point.speed_kmh,limit_kmh:80}});
-    if(prior){const distance=p=>Math.hypot((p.lat-12.9716)*111320,(p.lon-77.5946)*108480);const before=distance(prior)<=1200,after=distance(point)<=1200;if(before!==after)addAlert({vehicle_id:v.id,kind:after?"geofence_enter":"geofence_exit",recorded_at:point.recorded_at,details:{geofence_name:"Central Bengaluru demo zone"}});}
-  }tick++;changed();
+import { state, el, toast, visibleVehicles, activeTrip } from "./config.js?v=3";
+import { PreviewFleet } from "./preview.js?v=3";
+import { LiveFleet } from "./live.js?v=3";
+import { initializeMap, renderMap, fitMap } from "./map.js?v=3";
+import { initializePanels, renderPanels } from "./panels.js?v=3";
+let preview,
+  service,
+  timer,
+  lastLiveSync = 0,
+  refreshing = null;
+function render() {
+  renderPanels(selectVehicle, reviewTrip);
+  const detail = state.detail,
+    points = detail?.points || [],
+    vehicleIds = new Set(visibleVehicles().map((v) => v.id));
+  const positions =
+    detail?.trip.status !== "active" && points.length
+      ? [points.at(-1)]
+      : [...state.positions.values()].filter((p) =>
+          vehicleIds.has(p.vehicle_id),
+        );
+  renderMap(positions, state.selected, points);
 }
-function startSimulation() {
-  disconnect();state.mode="simulation";state.paused=false;tick=0;state.token=null;state.sourceNote="Browser fixtures";state.vehicles=Array.from({length:12},(_,i)=>({id:i+1,name:`Fleet ${String(i+1).padStart(2,"0")}`,registration:`DEMO-${String(i+1).padStart(3,"0")}`,kind:["delivery","cab","bus"][i%3]}));state.selected=1;state.positions.clear();state.histories.clear();state.alerts=[];clearTrace();
-  el("mode-name").textContent="Browser simulation";el("mode-subtitle").textContent="Synthetic GPS • no live backend";el("mode-dot").className="dot warning";el("source-explanation").textContent="This is sample data, not live vehicle telemetry. The public showcase runs in your browser. Connect a running backend to demonstrate FastAPI, PostgreSQL and Redis.";el("pipeline-status").textContent="Not connected";el("pipeline-note").textContent="Simulation bypasses this pipeline. Use Connect live API to test the real services.";el("return-demo").hidden=true;el("pause-simulation").hidden=false;el("pause-simulation").textContent="Pause simulation";el("map-context").textContent="Illustrative Bengaluru paths";el("connect-button").textContent="Connect live API";
-  showFences([{name:"Central Bengaluru demo zone",lat:12.9716,lon:77.5946,radius_m:1200}]);simulate();fitFleet();
+function setConnection(connected, note) {
+  state.connected = connected;
+  el("mode-name").textContent =
+    state.mode === "preview"
+      ? "Browser preview"
+      : connected
+        ? "Live API connected"
+        : "Live API · connection interrupted";
+  el("mode-note").textContent = note;
+  el("mode-dot").className =
+    `dot ${state.mode === "preview" ? "attention" : connected ? "positive" : "attention"}`;
+}
+async function refresh(fit = false) {
+  if (refreshing) {
+    await refreshing;
+    return refresh(fit);
+  }
+  const current = service;
+  const work = (async () => {
+    const [vehicles, trips, positions] = await Promise.all([
+      current.listVehicles(),
+      current.listTrips(),
+      current.snapshot(),
+    ]);
+    if (current !== service) return;
+    state.vehicles = vehicles;
+    state.trips = trips;
+    state.hasMoreTrips = !!current.hasMoreTrips;
+    for (const p of positions) {
+      const old = state.positions.get(p.vehicle_id);
+      if (!old || Date.parse(p.recorded_at) > Date.parse(old.recorded_at))
+        state.positions.set(p.vehicle_id, p);
+    }
+    if (current.ttl) state.ttl = current.ttl;
+    if (!visibleVehicles().some((v) => v.id === state.selected)) {
+      state.selected = visibleVehicles()[0]?.id || 0;
+      state.selectedTrip = 0;
+      state.detail = null;
+    }
+    if (!state.selectedTrip && state.selected)
+      state.selectedTrip =
+        state.trips.find((t) => t.vehicle_id === state.selected)?.id || 0;
+    if (state.selectedTrip) {
+      const id = state.selectedTrip;
+      const d = await current.detail(id);
+      if (current !== service || id !== state.selectedTrip) return;
+      state.detail = d;
+      const index = state.trips.findIndex((t) => t.id === d.trip.id);
+      if (index >= 0) state.trips[index] = d.trip;
+    }
+    render();
+    if (fit) fitMap();
+  })();
+  refreshing = work;
+  try {
+    await work;
+  } finally {
+    if (refreshing === work) refreshing = null;
+  }
+}
+async function selectVehicle(id) {
+  state.selected = id;
+  state.selectedTrip =
+    state.trips.find((t) => t.vehicle_id === id && t.status === "active")?.id ||
+    state.trips.find((t) => t.vehicle_id === id)?.id ||
+    0;
+  state.detail = null;
+  render();
+  try {
+    await refresh(true);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+async function reviewTrip(id) {
+  state.selectedTrip = id;
+  state.detail = null;
+  render();
+  const current = service;
+  try {
+    const detail = await current.detail(id);
+    if (current !== service || state.selectedTrip !== id) return;
+    state.detail = detail;
+    render();
+    fitMap();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+function openRegister() {
+  el("register-form").reset();
+  el("register-error").hidden = true;
+  el("register-mode").textContent =
+    state.mode === "live"
+      ? "Saved to your PostgreSQL database after registration."
+      : "Preview only: this vehicle exists in this tab until reload.";
+  el("register-dialog").showModal();
+}
+async function usePreview() {
+  service?.disconnect();
+  service = preview;
+  state.mode = "preview";
+  state.token = null;
+  state.selected = 0;
+  state.selectedTrip = 0;
+  state.detail = null;
+  state.positions.clear();
+  state.showSamples = false;
+  el("show-samples").checked = false;
+  el("use-preview").hidden = true;
+  el("reset-preview").hidden = false;
+  el("connect-button").textContent = "Connect live API";
+  el("source-explanation").textContent =
+    "Preview: register a vehicle and complete a simulated trip in this tab. Nothing here is saved to a server. Connect the API to use real PostgreSQL, Redis and WebSockets.";
+  setConnection(false, "This tab only · synthetic GPS");
+  await refresh(true);
+}
+function liveEvent(message) {
+  if (state.mode !== "live") return;
+  if (message.type === "connection") {
+    setConnection(message.connected, message.note);
+    return;
+  }
+  if (message.type === "position") {
+    const p = message.data,
+      old = state.positions.get(p.vehicle_id);
+    if (!old || Date.parse(p.recorded_at) > Date.parse(old.recorded_at))
+      state.positions.set(p.vehicle_id, p);
+    if (
+      state.detail?.trip.id === p.trip_id &&
+      state.detail.trip.status === "active" &&
+      !state.detail.points.some((x) => x.recorded_at === p.recorded_at)
+    )
+      state.detail.points.push(p);
+    render();
+  }
+  if (["alert", "gap"].includes(message.type)) lastLiveSync = 0;
 }
 async function main() {
-  initializeMap();initializePanels();listeners.add(()=>{renderPanels();renderMap();});
-  state.onSelect=id=>{state.selected=id;clearTrace();changed();};
-  try{const response=await fetch("demo/replay.json");if(!response.ok)throw new Error("Fixture load failed");routes=(await response.json()).routes;}catch{el("source-explanation").textContent="Sample data could not be loaded. Serve this folder over HTTP (not file://), or connect the live backend.";toast("Could not load sample routes.");return;}
-  startSimulation();timer=setInterval(()=>{if(state.mode==="simulation"&&!state.paused)simulate();else changed();},1000);
-  el("pause-simulation").addEventListener("click",()=>{state.paused=!state.paused;el("pause-simulation").textContent=state.paused?"Resume simulation":"Pause simulation";el("mode-subtitle").textContent=state.paused?"Paused • synthetic GPS data":"Synthetic GPS • no live backend";});
-  el("return-demo").addEventListener("click",startSimulation);
-  el("cloud-gps-button")?.addEventListener("click",async()=>{
-    if(state.mode!=="live"||!state.cloudDemo)return;const button=el("cloud-gps-button");button.disabled=true;
-    try{const stopping=state.cloudGPSRunning;await api(stopping?"/demo/stop":"/demo/start",{method:"POST",body:stopping?undefined:JSON.stringify({duration_seconds:300})});await refreshCloudDemo();toast(stopping?"Sample GPS stopped. Stored observations remain in PostgreSQL.":"Five-minute synthetic GPS session started through the real backend.");}catch(error){toast(error.message);}finally{button.disabled=false;}
+  initializeMap();
+  initializePanels();
+  for (const button of document.querySelectorAll('[data-action="register"]'))
+    button.addEventListener("click", openRegister);
+  for (const button of document.querySelectorAll("[data-close]"))
+    button.addEventListener("click", () => el(button.dataset.close).close());
+  el("vehicle-search").addEventListener("input", (event) => {
+    state.query = event.target.value.toLowerCase();
+    render();
   });
-  el("show-history").addEventListener("click",async()=>{
-    try{let points=state.histories.get(state.selected)||[];if(state.mode==="live"){const result=await api(`/vehicles/${state.selected}/positions?limit=200`);points=result.points;state.histories.set(state.selected,points);el("history-context").textContent=`${points.length} stored PostgreSQL observations${result.has_more?"; most recent 200 shown":""}. No map matching or fabricated traces.`;}else{el("history-context").textContent=`${points.length} synthetic browser observations. These are not persisted in PostgreSQL.`;}if(points.length<2){toast("Wait for two observed positions first.");return;}showTrace(points);changed();}catch(error){toast(error.message);}
+  el("show-samples").addEventListener("change", async (event) => {
+    state.showSamples = event.target.checked;
+    try {
+      await refresh(true);
+    } catch (error) {
+      toast(error.message);
+    }
   });
-  el("nearest-button").addEventListener("click",async()=>{
-    const point=state.positions.get(state.selected);if(!point){toast("No position available yet.");return;}
-    try{if(state.mode==="live"){const result=await api(`/fleet/nearest?lat=${point.lat}&lon=${point.lon}&limit=5`);const text=result.positions.map(p=>`${state.vehicles.find(v=>v.id===p.vehicle_id)?.name||p.vehicle_id}: ${p.distance_m} m`).join("; ");toast(`${result.source_used}: ${text||"no fresh vehicles within 25 km"}`);}else{toast("Simulation only. Connect the backend to demonstrate Redis GEO nearest-vehicle queries and PostgreSQL fallback.");}}catch(error){toast(error.message);}
+  el("fit-map").addEventListener("click", fitMap);
+  el("register-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const current = service;
+    const button = el("register-submit");
+    button.disabled = true;
+    el("register-error").hidden = true;
+    try {
+      const vehicle = await current.register({
+        name: el("vehicle-name").value,
+        registration: el("vehicle-registration").value,
+        kind: el("vehicle-type").value,
+      });
+      if (current !== service) return;
+      state.selected = vehicle.id;
+      state.selectedTrip = 0;
+      state.detail = null;
+      await refresh();
+      el("register-dialog").close();
+      toast(`${vehicle.name} registered. Now start its simulated trip.`);
+    } catch (error) {
+      el("register-error").textContent = error.message;
+      el("register-error").hidden = false;
+    } finally {
+      button.disabled = false;
+    }
   });
-  el("connect-button").addEventListener("click",()=>{el("api-origin").value=state.apiBase||(location.pathname.startsWith("/static/")?location.origin:"https://fleet-tejashr0716-demo.onrender.com");el("login-user").value="admin";el("login-password").value="";el("connect-error").hidden=true;el("connect-dialog").showModal();});
-  el("close-dialog").addEventListener("click",()=>el("connect-dialog").close());
-  el("connect-form").addEventListener("submit",async event=>{event.preventDefault();el("submit-connect").disabled=true;el("connect-error").hidden=true;try{await connect(el("api-origin").value,el("login-user").value,el("login-password").value);el("login-password").value="";el("connect-dialog").close();fitFleet();toast("Connected. The GPS source is synthetic, but the backend data flow is real.");}catch(error){el("connect-error").textContent=error instanceof TypeError?"API connection failed. Check that the backend is running and this page origin is included in ALLOWED_ORIGINS. For localhost, open the dashboard served by the API at port 8000.":error.message;el("connect-error").hidden=false;}finally{el("submit-connect").disabled=false;}});
-  addEventListener("pagehide",()=>{clearInterval(timer);disconnect();});
+  el("start-trip-button").addEventListener("click", () => {
+    el("start-error").hidden = true;
+    el("trip-vehicle-name").textContent =
+      state.vehicles.find((v) => v.id === state.selected)?.name || "vehicle";
+    el("start-mode").textContent =
+      state.mode === "live"
+        ? "The Python simulator will write samples to PostgreSQL and stream updates through Redis/WebSockets."
+        : "The browser will generate samples for this tab only. Connect the API for saved trips.";
+    el("start-dialog").showModal();
+  });
+  el("start-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const current = service;
+    state.busy = true;
+    el("start-submit").disabled = true;
+    el("start-error").hidden = true;
+    try {
+      const trip = await current.start(state.selected, {
+        route_key: el("trip-route").value,
+        duration_seconds: Number(el("trip-duration-select").value),
+        include_speeding: el("include-speeding").checked,
+      });
+      if (current !== service) return;
+      state.selectedTrip = trip.id;
+      await refresh(true);
+      el("start-dialog").close();
+      toast(
+        "Trip started. GPS is simulated; use Finish trip when you’re ready to review.",
+      );
+    } catch (error) {
+      el("start-error").textContent = error.message;
+      el("start-error").hidden = false;
+    } finally {
+      state.busy = false;
+      el("start-submit").disabled = false;
+      render();
+    }
+  });
+  el("finish-trip-button").addEventListener("click", () => {
+    el("finish-error").hidden = true;
+    el("finish-dialog").showModal();
+  });
+  el("confirm-finish").addEventListener("click", async () => {
+    const current = service,
+      id = activeTrip()?.id;
+    if (!id) return;
+    state.busy = true;
+    el("confirm-finish").disabled = true;
+    try {
+      await current.finish(id);
+      if (current !== service) return;
+      state.selectedTrip = id;
+      await refresh(true);
+      el("finish-dialog").close();
+      toast(
+        state.mode === "live"
+          ? "Trip finished and saved. Review its stored route and alerts below."
+          : "Preview trip finished. Its route and alerts remain in this tab only.",
+      );
+    } catch (error) {
+      el("finish-error").textContent = error.message;
+      el("finish-error").hidden = false;
+    } finally {
+      state.busy = false;
+      el("confirm-finish").disabled = false;
+      render();
+    }
+  });
+  el("view-active-button").addEventListener("click", () => {
+    const active = activeTrip();
+    if (active) reviewTrip(active.id);
+  });
+  el("connect-button").addEventListener("click", () => {
+    el("api-origin").value =
+      state.apiBase ||
+      (location.pathname.startsWith("/static/")
+        ? location.origin
+        : "https://fleet-tejashr0716-demo.onrender.com");
+    el("login-user").value = "admin";
+    el("login-password").value = "";
+    el("connect-error").hidden = true;
+    el("connect-dialog").showModal();
+  });
+  el("connect-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    el("submit-connect").disabled = true;
+    el("connect-error").hidden = true;
+    let candidate;
+    try {
+      candidate = await LiveFleet.signIn(
+        el("api-origin").value,
+        el("login-user").value,
+        el("login-password").value,
+        liveEvent,
+      );
+      el("login-password").value = "";
+      const [vehicles, trips, positions] = await Promise.all([
+        candidate.listVehicles(),
+        candidate.listTrips(),
+        candidate.snapshot(),
+      ]);
+      service?.disconnect();
+      preview.interrupt();
+      service = candidate;
+      state.mode = "live";
+      state.apiBase = candidate.base;
+      state.token = candidate.token;
+      state.vehicles = vehicles;
+      state.trips = trips;
+      state.positions = new Map(positions.map((p) => [p.vehicle_id, p]));
+      state.selected = vehicles.find((v) => !v.is_sample)?.id || 0;
+      state.selectedTrip = 0;
+      state.detail = null;
+      state.showSamples = false;
+      el("show-samples").checked = false;
+      el("use-preview").hidden = false;
+      el("reset-preview").hidden = true;
+      el("connect-button").textContent = "Reconnect / sign in";
+      el("source-explanation").textContent =
+        "Live API: vehicles, trips, GPS history and alerts are saved in PostgreSQL. The Python GPS source is still synthetic—not real vehicle hardware. Redis/WebSocket delivery is real.";
+      setConnection(true, "Connecting WebSocket · synthetic GPS");
+      render();
+      candidate.listen();
+      lastLiveSync = Date.now();
+      el("connect-dialog").close();
+      await refresh(true);
+      toast("Connected. Register your vehicle, then start its trip.");
+    } catch (error) {
+      if (candidate && candidate !== service) candidate.disconnect();
+      el("connect-error").textContent =
+        error instanceof TypeError
+          ? "Connection failed. Check the API origin, server status and allowed origins. A free cloud instance may need about a minute to wake."
+          : error.message;
+      el("connect-error").hidden = false;
+    } finally {
+      el("submit-connect").disabled = false;
+    }
+  });
+  el("use-preview").addEventListener("click", () =>
+    usePreview().catch((error) => toast(error.message)),
+  );
+  el("reset-preview").addEventListener("click", () =>
+    el("reset-dialog").showModal(),
+  );
+  el("confirm-reset").addEventListener("click", async () => {
+    preview.reset();
+    state.selected = 0;
+    state.selectedTrip = 0;
+    state.detail = null;
+    state.positions.clear();
+    el("reset-dialog").close();
+    await refresh(true);
+    toast("Preview reset. No server data was changed.");
+  });
+  try {
+    const response = await fetch("demo/replay.json");
+    if (!response.ok) throw new Error("Could not load sample routes.");
+    preview = new PreviewFleet((await response.json()).routes);
+    await usePreview();
+  } catch (error) {
+    el("source-explanation").textContent =
+      error.message + " Serve this folder over HTTP, not file://.";
+    toast(error.message);
+    return;
+  }
+  timer = setInterval(async () => {
+    if (document.hidden || refreshing || state.busy) return;
+    try {
+      if (state.mode === "preview") {
+        preview.advance();
+        await refresh();
+      } else if (service.token && Date.now() - lastLiveSync >= 4000) {
+        lastLiveSync = Date.now();
+        await refresh();
+      }
+    } catch (error) {
+      if (state.mode === "live") setConnection(false, error.message);
+      toast(error.message);
+    }
+  }, 1000);
+  addEventListener("pagehide", () => {
+    clearInterval(timer);
+    service?.disconnect();
+    state.token = null;
+  });
 }
 main();

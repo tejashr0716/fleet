@@ -50,4 +50,4 @@ async def test_vehicle_uniqueness_and_api_docs(system):
     )
     assert res.status_code == 409
     assert (await system.client.get("/openapi.json")).status_code == 200
-    assert (await system.client.get("/api/v1/health")).json()["schema_version"] == "fleet_v2"
+    assert (await system.client.get("/api/v1/health")).json()["schema_version"] == "fleet_v3_002"

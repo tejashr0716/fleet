@@ -26,6 +26,10 @@ async def status(request: Request):
 @router.post("/demo/start", status_code=202)
 async def start(body: StartSample, request: Request):
     controller = enabled(request)
+    if request.app.state.trips.tasks:
+        raise HTTPException(
+            409, "Finish active trips before starting the legacy fleet-wide simulator"
+        )
     worker = request.app.state.cloud_worker
     if worker is None or worker.done():
         raise HTTPException(503, "Cloud demo worker is unavailable")

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.models import Geofence, OutboxEvent, Position, Vehicle
+from app.models import Geofence, OutboxEvent, Position, Trip, Vehicle
 from app.services.alerts import evaluate_alerts
 from app.services.geofence import distance_m
 
@@ -13,6 +13,7 @@ def position_dict(point):
     return {
         "id": point.id,
         "vehicle_id": point.vehicle_id,
+        "trip_id": point.trip_id,
         "recorded_at": point.recorded_at.isoformat(),
         "lat": point.lat,
         "lon": point.lon,
@@ -54,8 +55,45 @@ async def ingest(session, batch, speed_limit):
         ).all()
     }
     fences = list((await session.scalars(select(Geofence))).all())
+    trip_ids = {p.trip_id for p in batch.positions if p.trip_id is not None}
+    trips = {
+        t.id: t for t in (await session.scalars(select(Trip).where(Trip.id.in_(trip_ids)))).all()
+    }
+    active = {
+        t.vehicle_id: t
+        for t in (
+            await session.scalars(
+                select(Trip).where(Trip.vehicle_id.in_(ids), Trip.status == "active")
+            )
+        ).all()
+    }
     inserted = 0
     for value in sorted(batch.positions, key=lambda p: (p.vehicle_id, p.recorded_at)):
+        trip = trips.get(value.trip_id) if value.trip_id is not None else None
+        if value.trip_id is not None and (trip is None or trip.vehicle_id != value.vehicle_id):
+            raise HTTPException(422, "Trip must belong to the telemetry vehicle")
+        if trip and value.recorded_at < trip.started_at:
+            raise HTTPException(422, "Trip sample cannot precede its start")
+        if trip and value.recorded_at > trip.expires_at:
+            raise HTTPException(422, "Trip sample cannot exceed its scheduled end")
+        closed_trip = trip is not None and trip.status != "active"
+        untagged_active = trip is None and value.vehicle_id in active
+        if closed_trip or untagged_active:
+            # Exact historical retries remain first-write-wins even after a trip has finished.
+            duplicate = await session.scalar(
+                select(Position.id).where(
+                    Position.vehicle_id == value.vehicle_id,
+                    Position.recorded_at == value.recorded_at,
+                )
+            )
+            if duplicate is not None:
+                continue
+            raise HTTPException(
+                409,
+                "Trip is finished"
+                if closed_trip
+                else "An active simulated trip requires its trip_id",
+            )
         # Duplicate key means exact retries are harmless; different data at the same timestamp is first-write-wins.
         statement = (
             insert(Position)
@@ -67,7 +105,12 @@ async def ingest(session, batch, speed_limit):
         if point is None:
             continue
         inserted += 1
-        alerts = evaluate_alerts(point, latest.get(point.vehicle_id), fences, speed_limit)
+        previous = latest.get(point.vehicle_id)
+        if trip and (previous is None or previous.trip_id != trip.id):
+            previous = None
+        alerts = evaluate_alerts(point, previous, fences, speed_limit)
+        for alert in alerts:
+            alert.trip_id = point.trip_id
         session.add_all(alerts)
         session.add(OutboxEvent(payload={"type": "position", "data": position_dict(point)}))
         for alert in alerts:
@@ -77,6 +120,7 @@ async def ingest(session, batch, speed_limit):
                         "type": "alert",
                         "data": {
                             "vehicle_id": alert.vehicle_id,
+                            "trip_id": alert.trip_id,
                             "kind": alert.kind,
                             "recorded_at": alert.recorded_at.isoformat(),
                             "details": alert.details,

@@ -1,28 +1,464 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Fleet: an honest synthetic GPS showcase with a connectable FastAPI, PostgreSQL and Redis backend.">
-<title>Fleet — Vehicle Tracking</title>
-<link rel="stylesheet" href="vendor/leaflet.css"><link rel="stylesheet" href="styles.css">
-<script defer src="vendor/leaflet.js"></script><script defer src="vendor/chart.umd.js"></script>
-<script type="module" src="app.js"></script>
-</head>
-<body>
-<header class="topbar"><a class="brand" href="./index.html" aria-label="Fleet home"><span class="brand-mark">F</span> Fleet <span class="brand-context">Vehicle tracking</span></a><nav aria-label="Project"><a id="docs-link" href="https://github.com/tejashr0716/fleet#readme" target="_blank" rel="noopener">Setup & docs ↗</a><a href="https://github.com/tejashr0716/fleet" target="_blank" rel="noopener">Source ↗</a><button id="connect-button" class="primary">Connect live API</button></nav></header>
-<main>
-<section class="heading"><div><p class="eyebrow">FLEET OPERATIONS / BENGALURU</p><h1>A clearer view of your fleet.</h1><p class="subtitle">Positions, history and alerts in one workspace.</p></div><div class="mode-label"><span id="mode-dot" class="dot warning"></span><strong id="mode-name">Browser simulation</strong><span id="mode-subtitle">Synthetic GPS • no live backend</span></div></section>
-<section id="source-banner" class="notice" role="status"><span class="notice-icon">i</span><p id="source-explanation"><strong>This is sample data, not live vehicle telemetry.</strong> The public showcase runs in your browser. Connect a running backend to demonstrate FastAPI, PostgreSQL and Redis.</p><button id="return-demo" class="quiet" hidden>Use sample data</button></section>
-<section class="summary" aria-label="Fleet summary"><div class="summary-item"><span>Registered vehicles</span><strong id="stat-total">—</strong></div><div class="summary-item"><span>Moving now</span><strong id="stat-moving">—</strong></div><div class="summary-item"><span>Stale signals</span><strong id="stat-stale">—</strong></div><div class="summary-item"><span>Data source</span><strong id="stat-source" class="text-stat">Browser fixtures</strong></div></section>
-<div class="workspace">
-<aside class="panel fleet-panel" aria-labelledby="fleet-title"><div class="panel-heading"><h2 id="fleet-title">Vehicles</h2><span id="list-count" class="small muted">12 total</span></div><label for="vehicle-search" class="sr-only">Search vehicles by name or registration</label><input id="vehicle-search" class="search" placeholder="Search vehicles…" type="search"><div class="filter-row" role="group" aria-label="Vehicle type"><button class="filter active" data-kind="all" aria-pressed="true">All</button><button class="filter" data-kind="delivery" aria-pressed="false">Delivery</button><button class="filter" data-kind="cab" aria-pressed="false">Cab</button><button class="filter" data-kind="bus" aria-pressed="false">Bus</button></div><div id="vehicle-list" class="vehicle-list" aria-label="Choose a vehicle"></div><p class="panel-foot">Signals become stale after <span id="ttl-label">30</span> seconds without a new position.</p></aside>
-<section class="map-section panel" aria-labelledby="map-title"><div class="panel-heading map-heading"><div><h2 id="map-title">Fleet map</h2><p class="small muted" id="map-context">Illustrative Bengaluru paths</p></div><button id="fit-map" class="quiet">Fit fleet</button></div><div id="map" role="region" aria-label="Vehicle map; use the vehicle list for a text alternative"></div><p id="tile-warning" class="tile-warning" hidden>Basemap unavailable. Vehicle coordinates and route traces are still plotted.</p><div class="map-toolbar"><div class="legend"><span class="legend-point"></span><span>Vehicle position</span><span class="legend-circle"></span><span>Demo geofence</span></div><button id="pause-simulation" class="quiet">Pause simulation</button><button id="cloud-gps-button" class="quiet" hidden>Start sample GPS (5 min)</button></div></section>
-<aside class="panel detail-panel" aria-labelledby="detail-title"><div class="panel-heading"><div><p class="eyebrow">SELECTED VEHICLE</p><h2 id="detail-title">Fleet 01</h2></div><span id="detail-kind" class="tag">Delivery</span></div><p id="detail-registration" class="muted small">DEMO-001</p><div class="speed-block"><div><strong id="detail-speed">—</strong><span>km/h</span></div><span id="detail-status" class="tag">Waiting</span></div><dl class="position-facts"><div><dt>Last update</dt><dd id="detail-last">—</dd></div><div><dt>Coordinates</dt><dd id="detail-coordinates">—</dd></div><div><dt>Heading</dt><dd id="detail-heading">—</dd></div></dl><div class="chart-heading"><h3>Observed speed</h3><span class="small muted">km/h</span></div><p id="chart-summary" class="sr-only">Waiting for speed observations.</p><div class="chart-wrap"><canvas id="speed-chart" role="img" aria-label="Observed vehicle speed over time">Use the speed observations table below.</canvas><p id="chart-empty" class="chart-empty">Waiting for two observations…</p></div><details class="values-details"><summary>Speed observations</summary><div class="table-scroll"><table><caption class="sr-only">Exact observed speed values</caption><thead><tr><th scope="col">Time</th><th scope="col">km/h</th></tr></thead><tbody id="speed-values"></tbody></table></div></details><button id="show-history" class="secondary full">Show observed route</button><button id="nearest-button" class="quiet full">Find nearest vehicles</button><p id="history-context" class="small muted">No fabricated performance numbers. History uses observed samples only.</p></aside>
-</div>
-<section class="bottom-grid"><div class="panel alerts-panel"><div class="panel-heading"><div><h2>Recent alerts</h2><p class="small muted">Threshold-based rules, not machine learning</p></div><span id="alert-count" class="small muted">0 alerts</span></div><div id="alert-list" class="alert-list"><p class="empty">No alert events yet. The simulator includes a deliberate speeding fixture.</p></div></div><div class="panel pipeline-panel"><div class="panel-heading"><h2>The backend behind the map</h2><span id="pipeline-status" class="tag">Not connected</span></div><ol class="pipeline"><li><span>01</span><div><strong>FastAPI + JWT</strong><p>Validate telemetry; authenticate viewers and devices.</p></div></li><li><span>02</span><div><strong>PostgreSQL</strong><p>Commit GPS history and its outbox event together.</p></div></li><li><span>03</span><div><strong>Redis + WebSockets</strong><p>Cache current locations; broadcast to connected viewers.</p></div></li></ol><p class="panel-foot" id="pipeline-note">Simulation bypasses this pipeline. Use Connect live API to test the real services.</p></div></section>
-<footer><span>Fleet / Backend engineering project</span><span id="clock-label">All GPS timestamps stored in UTC</span></footer>
-</main>
-<dialog id="connect-dialog"><form id="connect-form"><div class="dialog-heading"><h2>Connect a live backend</h2><button type="button" id="close-dialog" class="icon-button" aria-label="Close connection dialog">×</button></div><p class="muted">Use your local stack or hosted API, then enter its credentials. Free cloud instances can take about a minute to wake. Tokens stay in memory, never in browser storage.</p><label for="api-origin">Backend origin</label><input id="api-origin" type="url" placeholder="http://localhost:8000" required autocomplete="url"><label for="login-user">Username</label><input id="login-user" type="text" autocomplete="username" required><label for="login-password">Password</label><input id="login-password" type="password" autocomplete="current-password" required><p id="connect-error" class="error" role="alert" hidden></p><button id="submit-connect" class="primary full" type="submit">Connect & sign in</button><p class="small muted">Only localhost may use HTTP. Remote connections must use HTTPS.</p></form></dialog>
-<div id="toast" role="status" class="toast" hidden></div>
-<noscript><p class="notice">JavaScript is required for this interactive demo. Source and setup instructions are available on GitHub.</p></noscript>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Register a vehicle, run a simulated trip, watch GPS updates, then review its saved route and alerts. FastAPI, PostgreSQL and Redis."
+    />
+    <title>Fleet — Vehicles & Trips</title>
+    <link rel="stylesheet" href="vendor/leaflet.css" />
+    <link rel="stylesheet" href="styles.css?v=3" />
+    <script defer src="vendor/leaflet.js"></script>
+    <script defer src="vendor/chart.umd.js"></script>
+    <script type="module" src="app.js?v=3"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./index.html"
+        ><span class="brand-mark">F</span> Fleet
+        <span class="brand-context">Vehicles & trips</span></a
+      >
+      <nav aria-label="Project">
+        <a
+          href="https://github.com/tejashr0716/fleet/blob/main/docs/demo-walkthrough.md"
+          target="_blank"
+          rel="noopener"
+          >How to use ↗</a
+        ><a
+          href="https://github.com/tejashr0716/fleet"
+          target="_blank"
+          rel="noopener"
+          >Source ↗</a
+        ><button id="connect-button" class="secondary">Connect live API</button>
+      </nav>
+    </header>
+    <main>
+      <section class="heading">
+        <div>
+          <p class="eyebrow">A SMALL VEHICLE-TRACKING WORKSPACE</p>
+          <h1>Every trip has a start. And a record.</h1>
+          <p class="subtitle">
+            Register your vehicle, track a simulated trip, then review what
+            happened.
+          </p>
+        </div>
+        <div class="mode-label">
+          <span id="mode-dot" class="dot attention"></span
+          ><strong id="mode-name">Browser preview</strong
+          ><span id="mode-note">This tab only · synthetic GPS</span>
+        </div>
+      </section>
+      <section class="notice" aria-label="Data source">
+        <p id="source-explanation">
+          Preview: this tab only. Connect the API for saved trips and real
+          backend services.
+        </p>
+        <div class="notice-actions">
+          <button id="use-preview" class="quiet" hidden>
+            Return to preview</button
+          ><button id="reset-preview" class="quiet">Reset preview</button>
+        </div>
+      </section>
+      <ol class="workflow" aria-label="Trip workflow">
+        <li class="workflow-step current" data-step="1">
+          <span>1</span> Register vehicle
+        </li>
+        <li class="workflow-step" data-step="2"><span>2</span> Start trip</li>
+        <li class="workflow-step" data-step="3">
+          <span>3</span> Watch updates
+        </li>
+        <li class="workflow-step" data-step="4"><span>4</span> Finish trip</li>
+        <li class="workflow-step" data-step="5">
+          <span>5</span> Review record
+        </li>
+      </ol>
+      <div class="workspace">
+        <aside class="panel vehicles-panel">
+          <div class="panel-heading">
+            <h2>Your vehicles</h2>
+            <span id="vehicle-count" class="muted small">0 vehicles</span>
+          </div>
+          <button class="primary full" data-action="register">
+            + Register vehicle</button
+          ><label for="vehicle-search" class="sr-only"
+            >Search vehicle name or registration</label
+          ><input
+            id="vehicle-search"
+            type="search"
+            placeholder="Search vehicles…"
+          /><label id="show-samples-wrap" class="checkbox small" hidden
+            ><input id="show-samples" type="checkbox" /> Show
+            <span id="sample-count">12</span> seeded samples</label
+          >
+          <div id="vehicle-list" class="vehicle-list"></div>
+          <p class="panel-foot">
+            <span id="active-count">0 running</span><br />Only vehicles with an
+            active trip generate new GPS samples.
+          </p>
+        </aside>
+        <section class="panel map-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 id="map-title">Your trip map</h2>
+              <p class="muted small" id="map-context">
+                Start a trip to see its observed trace
+              </p>
+            </div>
+            <button id="fit-map" class="quiet" disabled>Fit route</button>
+          </div>
+          <div class="map-wrap">
+            <div
+              id="map"
+              role="region"
+              aria-label="GPS map. Exact coordinates are available in the observations table."
+            ></div>
+            <div id="map-empty" class="map-empty">
+              <strong id="map-empty-title">Your first trip starts here</strong>
+              <p id="map-empty-copy">
+                Register a vehicle, choose a demo route, then start tracking.
+              </p>
+            </div>
+          </div>
+          <p id="tile-warning" class="tile-warning" hidden>
+            Basemap unavailable. Coordinates and the observed trace still work.
+          </p>
+          <div class="position-strip">
+            <div>
+              <span id="position-label" class="muted small"
+                >Latest synthetic speed</span
+              ><strong id="position-speed">—</strong>
+            </div>
+            <div>
+              <span class="muted small">Last sample</span
+              ><strong id="position-time">No GPS samples yet</strong>
+            </div>
+            <span id="position-status" class="tag">Waiting for a trip</span>
+          </div>
+          <p class="map-caption small muted">
+            Blue line: observed samples joined in order · Dashed circle: demo
+            geofence. Routes are illustrative, not road-matched.
+          </p>
+        </section>
+        <aside class="panel controls-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">SELECTED VEHICLE</p>
+              <h2 id="detail-title">Choose a vehicle</h2>
+            </div>
+            <span id="vehicle-kind" class="tag">—</span>
+          </div>
+          <p id="detail-registration" class="muted">
+            Register a vehicle to begin
+          </p>
+          <div id="vehicle-empty" class="control-empty">
+            <p>
+              Start with one vehicle. You control when its GPS simulation begins
+              and ends.
+            </p>
+            <button class="primary full" data-action="register">
+              Register your first vehicle
+            </button>
+          </div>
+          <div id="vehicle-controls" hidden>
+            <button id="start-trip-button" class="primary full">
+              Start simulated trip</button
+            ><button id="finish-trip-button" class="finish full" hidden>
+              Finish trip & review</button
+            ><button id="view-active-button" class="secondary full" hidden>
+              View current trip
+            </button>
+            <p id="no-trip-message" class="muted small">
+              Choose an illustrative route. You can finish early; the time limit
+              also stops the simulator automatically.
+            </p>
+            <section id="trip-record" class="trip-record" hidden>
+              <div class="record-heading">
+                <h3 id="trip-id">Trip record</h3>
+                <span id="trip-status" class="tag">—</span>
+              </div>
+              <p id="route-name"></p>
+              <p id="trip-source" class="small source-text"></p>
+              <div class="trip-metrics">
+                <div>
+                  <span>Duration</span><strong id="trip-duration">—</strong>
+                </div>
+                <div>
+                  <span>GPS samples</span><strong id="trip-points">—</strong>
+                </div>
+                <div>
+                  <span>Trace distance</span
+                  ><strong id="trip-distance">—</strong>
+                </div>
+                <div>
+                  <span>Max input speed</span
+                  ><strong id="trip-max-speed">—</strong>
+                </div>
+              </div>
+              <dl class="trip-times">
+                <div>
+                  <dt>Started</dt>
+                  <dd id="trip-started">—</dd>
+                </div>
+                <div>
+                  <dt>Finished</dt>
+                  <dd id="trip-ended">—</dd>
+                </div>
+              </dl>
+              <p id="end-reason" class="small muted"></p>
+              <div class="chart-heading">
+                <h3>Synthetic speed inputs</h3>
+                <span id="chart-coverage" class="small muted">km/h</span>
+              </div>
+              <p id="chart-summary" class="sr-only">No speed samples yet.</p>
+              <div class="chart-wrap">
+                <canvas
+                  id="speed-chart"
+                  role="img"
+                  aria-label="Synthetic input speed over time"
+                  >Exact values are in the observations table.</canvas
+                >
+                <p id="chart-empty" class="chart-empty">
+                  Waiting for two GPS samples…
+                </p>
+              </div>
+              <p class="small muted metric-note">
+                Distance joins stored coordinates in straight lines. GPS and
+                speed inputs are synthetic, not measurements from a real
+                vehicle.
+              </p>
+            </section>
+          </div>
+        </aside>
+      </div>
+      <div class="bottom-grid">
+        <section class="panel history-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 id="history-title">Trip history</h2>
+              <p class="small muted">
+                Select a trip to review its route, samples and alerts.
+              </p>
+            </div>
+            <span id="history-count" class="small muted">0 trips</span>
+          </div>
+          <div id="trip-list" class="trip-list"></div>
+          <p id="history-source" class="panel-foot"></p>
+        </section>
+        <section class="panel alerts-panel">
+          <div class="panel-heading">
+            <h2>Selected trip’s alerts</h2>
+            <span id="alert-count" class="small muted">0 alerts</span>
+          </div>
+          <div id="alert-list" class="alert-list"></div>
+          <p id="alert-source" class="panel-foot">
+            Speeding and circular geofence rules; no machine learning.
+          </p>
+        </section>
+      </div>
+      <details id="observations" class="panel observations" hidden>
+        <summary>
+          Exact GPS observations — route and chart text alternative
+        </summary>
+        <div class="table-scroll">
+          <table>
+            <caption>
+              Selected trip’s synthetic GPS samples. Times shown locally;
+              timestamps stored in UTC.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Latitude</th>
+                <th scope="col">Longitude</th>
+                <th scope="col">Speed (km/h)</th>
+              </tr>
+            </thead>
+            <tbody id="observation-values"></tbody>
+          </table>
+        </div>
+      </details>
+      <footer>
+        <span>Fleet · FastAPI / PostgreSQL / Redis</span
+        ><span>Simulated GPS. Real backend operations in live API mode.</span>
+      </footer>
+    </main>
+    <dialog id="register-dialog">
+      <form id="register-form">
+        <div class="dialog-heading">
+          <h2>Register a vehicle</h2>
+          <button
+            class="icon-button"
+            type="button"
+            data-close="register-dialog"
+            aria-label="Close registration"
+          >
+            ×
+          </button>
+        </div>
+        <p id="register-mode" class="muted"></p>
+        <label for="vehicle-name">Vehicle name</label
+        ><input
+          id="vehicle-name"
+          name="name"
+          required
+          maxlength="60"
+          placeholder="e.g. Delivery Van 01"
+          autocomplete="off"
+        /><label for="vehicle-registration"
+          >Registration / demo identifier</label
+        ><input
+          id="vehicle-registration"
+          name="registration"
+          required
+          maxlength="30"
+          placeholder="e.g. KA-01-DEMO-01"
+          autocomplete="off"
+        /><label for="vehicle-type">Vehicle type</label
+        ><select id="vehicle-type">
+          <option value="delivery">Delivery</option>
+          <option value="cab">Cab</option>
+          <option value="bus">Bus</option>
+        </select>
+        <p id="register-error" class="error" role="alert" hidden></p>
+        <button id="register-submit" class="primary full" type="submit">
+          Register vehicle
+        </button>
+      </form>
+    </dialog>
+    <dialog id="start-dialog">
+      <form id="start-form">
+        <div class="dialog-heading">
+          <h2>Start a simulated trip</h2>
+          <button
+            class="icon-button"
+            type="button"
+            data-close="start-dialog"
+            aria-label="Close trip setup"
+          >
+            ×
+          </button>
+        </div>
+        <p>Vehicle: <strong id="trip-vehicle-name"></strong></p>
+        <p id="start-mode" class="muted"></p>
+        <label for="trip-route">Demo route</label
+        ><select id="trip-route">
+          <option value="central">Central Bengaluru loop</option>
+          <option value="east">East Bengaluru loop</option>
+          <option value="west">West Bengaluru loop</option></select
+        ><label for="trip-duration-select">Automatic finish after</label
+        ><select id="trip-duration-select">
+          <option value="60">1 minute</option>
+          <option value="180" selected>3 minutes</option>
+          <option value="300">5 minutes</option>
+          <option value="600">10 minutes</option></select
+        ><label class="checkbox"
+          ><input id="include-speeding" type="checkbox" checked /> Include a 92
+          km/h speeding test event</label
+        >
+        <p class="small muted">
+          GPS updates arrive about every 2 seconds. Routes are illustrative;
+          this is not navigation or real vehicle telemetry.
+        </p>
+        <p id="start-error" class="error" role="alert" hidden></p>
+        <button id="start-submit" class="primary full" type="submit">
+          Start trip
+        </button>
+      </form>
+    </dialog>
+    <dialog id="finish-dialog">
+      <div class="dialog-heading">
+        <h2>Finish this trip?</h2>
+        <button
+          class="icon-button"
+          data-close="finish-dialog"
+          aria-label="Close finish confirmation"
+        >
+          ×
+        </button>
+      </div>
+      <p>
+        Stop new GPS samples and keep this trip’s route, timestamps and alerts
+        for review.
+      </p>
+      <p id="finish-error" class="error" role="alert" hidden></p>
+      <button id="confirm-finish" class="finish full">Finish trip</button
+      ><button class="secondary full" data-close="finish-dialog">
+        Keep tracking
+      </button>
+    </dialog>
+    <dialog id="connect-dialog">
+      <form id="connect-form">
+        <div class="dialog-heading">
+          <h2>Connect the live API</h2>
+          <button
+            class="icon-button"
+            type="button"
+            data-close="connect-dialog"
+            aria-label="Close sign-in"
+          >
+            ×
+          </button>
+        </div>
+        <p class="muted">
+          Use your local stack or hosted API and its private credentials. The
+          free host may take about a minute to wake. Tokens stay in memory,
+          never browser storage.
+        </p>
+        <label for="api-origin">Backend origin</label
+        ><input
+          id="api-origin"
+          type="url"
+          required
+          placeholder="http://localhost:8000"
+          autocomplete="url"
+        /><label for="login-user">Username</label
+        ><input id="login-user" autocomplete="username" required /><label
+          for="login-password"
+          >Password</label
+        ><input
+          id="login-password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+        <p id="connect-error" class="error" role="alert" hidden></p>
+        <button id="submit-connect" class="primary full" type="submit">
+          Connect & sign in
+        </button>
+        <p class="small muted">
+          Remote APIs require HTTPS. HTTP is allowed only for localhost. Any
+          running preview trip is marked interrupted when you connect.
+        </p>
+      </form>
+    </dialog>
+    <dialog id="reset-dialog">
+      <div class="dialog-heading">
+        <h2>Reset this preview?</h2>
+        <button
+          class="icon-button"
+          data-close="reset-dialog"
+          aria-label="Close reset confirmation"
+        >
+          ×
+        </button>
+      </div>
+      <p>
+        Remove preview vehicles and trips from this tab. This never changes your
+        live backend data.
+      </p>
+      <button id="confirm-reset" class="primary full">Reset preview</button
+      ><button class="secondary full" data-close="reset-dialog">
+        Keep preview
+      </button>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <noscript
+      ><p class="notice">
+        JavaScript is required. Setup and API documentation are available in the
+        source repository.
+      </p></noscript
+    >
+  </body>
+</html>

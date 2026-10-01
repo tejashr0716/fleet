@@ -15,6 +15,7 @@ async def seed(db, count=12):
                 .values(
                     name=f"Fleet {i:02d}",
                     registration=f"DEMO-{i:03d}",
+                    is_sample=True,
                     kind=["delivery", "cab", "bus"][(i - 1) % 3],
                 )
                 .on_conflict_do_nothing(index_elements=[Vehicle.name])

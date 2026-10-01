@@ -1,0 +1,13 @@
+{
+  "name": "fleet-trip-ui-tests",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "scripts": {
+    "test:preview": "node --test tests/preview-store.test.js",
+    "test:ui": "node scripts/ui-check.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

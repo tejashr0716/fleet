@@ -48,3 +48,10 @@ Protected endpoints: `GET /api/v1/demo/status`, `POST /api/v1/demo/start` and `P
 - This mode does not prove throughput, high availability, physical GPS integration or production deployment skills.
 
 Official references: [Render free-instance limits](https://render.com/docs/free), [compute plans](https://render.com/docs/compute-plans), [pricing](https://render.com/pricing).
+
+
+## v3 trip controls
+
+Use **Register vehicle → Start simulated trip → Finish trip & review** instead of the old **Start sample GPS** control. The hosted single API process runs bounded per-vehicle tasks, the existing outbox worker task, and authenticated WebSockets. At most three trips run together, twelve may start per hour, and the synthetic row budget rejects new runs without deleting history. The `/demo/*` fleet-wide controls are legacy compatibility only.
+
+Free plan, database expiry, sleeping behavior and no-card constraints are unchanged. No additional hosting resource is required by the trip workflow.

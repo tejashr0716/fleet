@@ -1,3 +1,21 @@
+## Explain the idea first
+
+“I built a small vehicle-trip tracker. A user registers a vehicle, starts a bounded simulated trip, watches GPS updates, finishes it, and reviews the saved route and alerts. GPS inputs are generated; database writes and Redis/WebSocket delivery are real in connected mode.”
+
+Demonstrate that workflow before discussing libraries. See [plain-language project explanation](project-idea.md) and [demo walkthrough](demo-walkthrough.md).
+
+### Why explicit trips instead of guessing from GPS gaps?
+
+Start/finish actions express the user's intent. A silence gap might be a network failure, not a finished trip. The older derived trace endpoint remains separate; v3 uses durable lifecycle records and `trip_id` associations.
+
+### What happens if the backend restarts?
+
+The database record survives but an in-memory simulation task does not. Recovery marks that trip interrupted with a reason. This is deliberately a single-process demo, not a distributed scheduler.
+
+### What does the distance mean?
+
+It is a straight-line sum of stored synthetic coordinates, not actual distance driven on roads. A deliberately injected speeding input tests an alert rule; it is not a measured vehicle event.
+
 # Fleet interview guide
 
 Use these as explanations to learn and verify, not as claims about work you have not understood. Open the referenced files and run each corresponding demo.

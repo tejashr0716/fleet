@@ -51,7 +51,7 @@ async def system(request):
         async with app.state.db.engine.begin() as conn:
             await conn.execute(
                 text(
-                    "TRUNCATE fleet_v2.outbox, fleet_v2.alerts, fleet_v2.positions, fleet_v2.geofences, fleet_v2.vehicles RESTART IDENTITY CASCADE"
+                    "TRUNCATE fleet_v2.trips, fleet_v2.outbox, fleet_v2.alerts, fleet_v2.positions, fleet_v2.geofences, fleet_v2.vehicles RESTART IDENTITY CASCADE"
                 )
             )
         await app.state.redis.flushdb()

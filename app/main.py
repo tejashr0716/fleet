@@ -14,9 +14,10 @@ from app.config import Settings
 from app.db import Database
 from app.errors import install_errors
 from app.redis_client import make_redis
-from app.routers import alerts, demo, fleet, geofences, health, positions, vehicles
+from app.routers import alerts, demo, fleet, geofences, health, positions, trips, vehicles
 from app.security import Auth, Login
 from app.services.demo import SampleGPS
+from app.services.trip_runner import TripRunner
 from app.ws.live import router as ws_router
 from app.ws.manager import Hub
 
@@ -37,6 +38,8 @@ def create_app(settings=None):
         app.state.db = Database(settings.database_url)
         app.state.redis = make_redis(settings.redis_url)
         app.state.auth = Auth(settings)
+        app.state.trips = TripRunner(app.state.db, settings)
+        await app.state.trips.reconcile()
         app.state.hub = Hub()
         app.state.demo = None
         app.state.cloud_worker = None
@@ -55,6 +58,7 @@ def create_app(settings=None):
         try:
             yield
         finally:
+            await app.state.trips.shutdown()
             if app.state.demo:
                 await app.state.demo.stop()
             if app.state.cloud_worker:
@@ -67,7 +71,7 @@ def create_app(settings=None):
 
     app = FastAPI(
         title="Fleet Vehicle Tracking",
-        version="2.1.0",
+        version="3.0.0",
         lifespan=lifespan,
         description="Synthetic GPS demo. PostgreSQL durability, Redis fan-out, JWT-protected reads.",
     )
@@ -116,6 +120,7 @@ def create_app(settings=None):
         alerts.router,
         health.router,
         demo.router,
+        trips.router,
     ]:
         app.include_router(router, prefix="/api/v1")
     app.include_router(ws_router)
