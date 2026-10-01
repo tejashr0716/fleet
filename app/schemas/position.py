@@ -7,6 +7,7 @@ from app.schemas.common import Schema
 
 class PositionIn(Schema):
     vehicle_id: int = Field(gt=0)
+    trip_id: int | None = Field(default=None, gt=0)
     recorded_at: datetime
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)

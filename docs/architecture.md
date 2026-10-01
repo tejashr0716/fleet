@@ -44,3 +44,16 @@ The dashboard makes a five-second snapshot reconciliation request because realti
 ## Deployment boundaries
 
 A static Pages publication is not a backend deployment. Real services require separate persistent infrastructure and HTTPS. The included Compose setup binds application/database/cache ports to loopback by default. Production mode rejects conspicuous demo secrets, but the project is not a complete production security posture: single account, no token revocation, no multi-tenancy, no device-level rotation or audit system.
+
+
+## v3: explicit vehicle trips
+
+`app/routers/trips.py` exposes start/list/detail/finish. `app/models/trip.py` stores explicit lifecycle records; `managed_trip_repo.py` handles capacity checks, database locking and observed summaries. `TripRunner` creates Pydantic-validated synthetic batches through the same ingestion repository used by `/positions/batch`. It does not need to make loopback HTTP requests or keep an owner password in the browser.
+
+Trip and alert samples carry `trip_id`. `positions/batch` validates the vehicle association, rejects new samples for a finished trip, and still accepts first-write-wins retries of already stored timestamps. Finishing waits for the generator to stop, takes the same vehicle lock as ingestion, and then commits the lifecycle update. Delayed outbox delivery can still contain earlier committed samples; it does not mean generation continued after completion.
+
+Only one active trip per vehicle is enforced by a PostgreSQL partial unique index. Start-capacity checks use a PostgreSQL advisory transaction lock; the hourly quota is counted from persisted trip records, not reset by a Python restart. On startup, previously active simulated tasks are marked interrupted. There is no claim of durable task execution or multi-process scheduling.
+
+Browser preview implements the workflow in isolated memory. It makes no backend requests and is explicitly reset by reload. Switching to live mode marks a running preview interrupted. A live API failure retains the observed data and connection warning; it never switches to fixtures silently.
+
+Trip detail metrics are computed from the stored inputs: lifecycle duration, sample count, maximum synthetic input speed, alert count and straight-line trace distance. Truncated traces do not receive an invented full distance. Leaflet displays observations; it does not perform navigation, map matching or road-route optimization.

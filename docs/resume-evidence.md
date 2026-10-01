@@ -20,3 +20,8 @@ The current supplied project entry names **Python, FastAPI, PostgreSQL, Redis an
 These are qualitative capability statements, not fabricated production outcomes. “Real-time” describes the processing path, not a guarantee of a particular latency. Do not claim real fleet operators, thousands of vehicles, a compression ratio, p95 latency or a specific throughput without evidence measured under a documented workload.
 
 This rebuild is current work. Preserve Jan–May 2026 dates only if they accurately describe your original project work; do not backdate code or use this rebuild as evidence of when something was first implemented. No resume file is changed by the rebuild.
+
+
+## Managed-trip workflow (v3)
+
+The new implementation supports vehicle registration, explicit start/finish actions, a bounded synthetic GPS generator, trip-specific PostgreSQL history/alerts, Redis/WebSocket fan-out and reopening a completed trip after reconnect. Review the actual code and verification evidence before claiming personal proficiency. Do not describe generated inputs as physical vehicle telemetry or the speeding fixture as a measured event. Do not backdate the rebuild or carry unverified performance metrics into a resume.

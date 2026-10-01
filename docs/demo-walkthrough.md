@@ -1,45 +1,52 @@
-# Five-minute demonstration
+# Demo walkthrough: register → start → track → finish → review
 
-## Before the interview
+## Try it immediately — browser preview
 
-- Run `python scripts/doctor.py` on your own computer; it does not read credentials.
-- Start the Compose demo and sign in to the live API. Keep `.env` out of screen shares.
-- Open the dashboard, API `/docs`, architecture guide and tests in separate tabs.
-- Verify dependency health and a drained outbox. Have local setup ready even if a hosted service is asleep/unavailable.
-- Say up front: “GPS samples are simulated; backend storage and event delivery are real.”
+Open [Fleet](https://tejashr0716.github.io/fleet/). You start with **zero vehicles**, not a fleet that moves automatically.
 
-## 1. Explain the screen (30 seconds)
+1. Click **Register vehicle**. Enter a name such as `Delivery Van 01`, a demo identifier such as `KA-01-DEMO-01`, and a vehicle type.
+2. Click **Start simulated trip**. Choose a demo route and an automatic finish time. Keep **Include a 92 km/h speeding test event** checked if you want to demonstrate alerts.
+3. Click **Start trip**. Samples appear about every two seconds. **Fit route** frames the observed trace. The speed chart and exact GPS table use generated observations, not a pre-drawn travel history.
+4. After about 16 seconds the deliberate speeding input produces a trip-specific alert. These are threshold rules, not ML.
+5. Click **Finish trip & review**, then confirm **Finish trip**. The trip changes to completed, its generator stops, and the record remains in the history list.
+6. Select **Review** to inspect that trip's route, samples, start/end timestamps, trace distance and alerts. Start another trip to see separate histories.
 
-Select a vehicle. Identify its actual last observed timestamp, coordinates, speed, freshness status and speed observations. Public Pages mode is explicitly simulation-only, so it is not the backend proof.
+Preview records disappear on reload. **Reset preview** only clears this tab; it never deletes backend data.
 
-## 2. Show the real data path (60 seconds)
+## Demonstrate the real backend
 
-Connect to localhost with your local credentials. Show API health and worker/simulator logs. Open a stored history request in Swagger, using a JWT from `/auth/token`. Never paste the device key or token into a URL.
-
-## 3. Prove a retry is safe (45 seconds)
-
-Use the same JSON GPS sample and the same `recorded_at` twice in `/positions/batch`. First: `inserted: 1`. Retry: `duplicates: 1`. Show the history contains one row. If you change the timestamp, that is a new observation, not a retry.
-
-## 4. Trigger a rule (45 seconds)
-
-The `--trigger-alerts` simulator intentionally supplies a speeding fixture at ticks 15–17. This is a scripted demo input, not a measured sensor event. Show one threshold-crossing alert and explain why a repeated speeding sample does not create another crossing.
-
-## 5. Pause Redis and recover (60 seconds)
+Start the local stack:
 
 ```bash
-docker compose stop redis
-# Keep the API and worker running. Health becomes degraded.
-# History and authenticated ingestion still work; nearest uses database fallback.
-docker compose start redis
-# Worker resumes and pending outbox events drain.
+python scripts/setup.py
+docker compose up --build -d
 ```
 
-Do this after signing in: new login attempts fail closed while Redis is unavailable. Redis-down requests can take a few seconds because network operations must time out.
+Do not start the legacy `demo` simulator profile for this workflow. The new per-vehicle generator starts only when you explicitly start a trip.
 
-## 6. Explain one trade-off (30 seconds)
+Open `http://localhost:8000/static/index.html`. Click **Connect live API**, use `http://localhost:8000` as the origin, and enter the username/password from your local `.env`. For the temporary hosted demo use `https://fleet-tejashr0716-demo.onrender.com` and your private hosted credentials. No password is included in this repository.
 
-Database-first writes favor correctness over maximum admission throughput. Redis Pub/Sub is transient, so the browser reconciles from durable PostgreSQL. This demo does not promise exactly-once streaming or production scale.
+Repeat the five actions above. The interface now says **Stored in PostgreSQL**. Close/reload the page, sign in again, and reopen the completed trip. Its persisted route and alerts are returned by the API.
 
-## Closing
+The twelve legacy seeded vehicles are preserved but hidden under **Show seeded samples**. Register your own demo vehicle for the clearest presentation.
 
-Point to a relevant test and an architecture decision. Show that you can change and rerun a rule. Be precise about what you implemented/reviewed and what remains a limitation.
+## What to point to in an interview
+
+- `POST /api/v1/vehicles` really registers a record.
+- `POST /api/v1/vehicles/{id}/trips` creates an explicit active trip and starts bounded Python simulation.
+- Samples carry `trip_id`; the shared validation/ingestion repository commits positions, alerts and outbox events together.
+- The worker performs Redis cache/GEO/PubSub handoff; `/ws/live` requires a JWT in its first frame.
+- `POST /api/v1/trips/{id}/finish` cancels generation and durably closes the trip. Repeating finish is idempotent.
+- `GET /api/v1/trips/{id}` returns that trip's actual stored synthetic inputs and alerts. History is not guessed from an animation or a five-minute gap.
+- A service restart marks an unfinished simulated trip **interrupted**; it never pretends a Python task continued across the restart.
+
+Trace distance is the straight-line sum between stored coordinates, **not road distance**. The speeding event is a labeled fixture, not a measurement.
+
+## Practical limits
+
+- One active trip per vehicle; at most three simultaneous simulated trips and twelve starts per hour per single-owner application.
+- Trip duration: API 5–600 seconds; UI 1, 3, 5 or 10 minutes; manual finish can end it earlier.
+- Hosted synthetic storage budget: 50,000 samples by default. New runs are rejected when the budget/backlog guard is reached; existing history is not erased.
+- Live list loads the most recent 200 trips. A direct trip detail remains available by ID. A detail response returns at most 5,000 points and 200 alerts, explicitly flags truncation, and does not invent a whole-trip distance from a partial trace.
+- One API process is supported for in-process simulated trip tasks. The free deployment uses one process. A production multi-worker deployment would need a separate durable scheduler and per-user authorization.
+- Temporary free hosting sleeps and has an expiring PostgreSQL database. It is not always-on production hosting. Stop/finish trips after presenting.

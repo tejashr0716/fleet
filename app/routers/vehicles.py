@@ -58,7 +58,7 @@ async def positions(
         }
 
 
-@router.get("/{vehicle_id}/trips")
+@router.get("/{vehicle_id}/trace-sessions")
 async def trips(
     vehicle_id: int,
     request: Request,

@@ -1,4 +1,4 @@
-from app.models.trip import Trip
+from app.models.trip import TraceSession
 from app.services.geofence import distance_m
 
 
@@ -13,7 +13,7 @@ def segment_trace(points, gap_seconds=300):
             groups.append([])
         groups[-1].append(point)
     return [
-        Trip(
+        TraceSession(
             g[0].vehicle_id,
             g[0].recorded_at,
             g[-1].recorded_at,

@@ -12,6 +12,9 @@ class Position(Base):
     __table_args__ = (UniqueConstraint("vehicle_id", "recorded_at", name="uq_vehicle_time"),)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("fleet_v2.vehicles.id"))
+    trip_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fleet_v2.trips.id"), nullable=True, index=True
+    )
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)

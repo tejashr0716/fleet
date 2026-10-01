@@ -1,14 +1,20 @@
 # Fleet — Real-Time Vehicle Tracking Platform
 
-## Verified temporary hosted demo
+## Register → start → track → finish → review
 
-- [Public showcase](https://tejashr0716.github.io/fleet/) starts in clearly labeled browser simulation.
-- [Hosted API dashboard](https://fleet-tejashr0716-demo.onrender.com/static/index.html) uses the real FastAPI, PostgreSQL and Redis-compatible Key Value services after sign-in.
-- Click **Connect live API**, use your private owner credentials, then **Start sample GPS (5 min)**. The public page pre-fills the hosted origin; credentials are never published.
-- GPS is synthetic. Database writes, transactional outbox handoff, Redis GEO and authenticated WebSocket delivery are real. Alerts use thresholds, not machine learning.
-- Stop GPS and select **Use sample data** after presenting. Free instances can sleep and take about a minute to wake.
-- The disposable free PostgreSQL database expires **2026-10-30 at 18:12 UTC (23:42 IST)**. This is not permanent, always-on production hosting. Keep the Docker setup for practice after expiry.
-- [Free hosting setup and limits](docs/render-free-demo.md) · [Interview guide](docs/interview-guide.md) · [Live verification evidence](reports/render-live-verification.json).
+[Try Fleet](https://tejashr0716.github.io/fleet/) · [What this project does](docs/project-idea.md) · [Step-by-step demo](docs/demo-walkthrough.md)
+
+Fleet now has a concrete trip workflow, not just an automatically moving sample fleet:
+
+1. Register a vehicle with a name, identifier and type.
+2. Start its simulated trip on an illustrative route.
+3. Watch GPS samples, the growing trace and trip-specific alerts.
+4. Finish the trip, or let its time limit finish it.
+5. Reopen the completed record to review its route and alerts.
+
+The public page starts empty in **browser preview**; its records exist only in this tab. **Connect live API** uses the real backend and private owner credentials. Registration, explicit trip records, GPS history and alerts are persisted in PostgreSQL; Redis and authenticated WebSockets provide live updates. GPS remains synthetic in both modes.
+
+The temporary free backend is [here](https://fleet-tejashr0716-demo.onrender.com/static/index.html). Free instances may need about a minute to wake. Its disposable PostgreSQL database expires **2026-10-30 at 18:12 UTC (23:42 IST)**; no paid plan or always-on guarantee is implied. [Hosting limits](docs/render-free-demo.md).
 
 **Python · FastAPI · PostgreSQL · Redis · REST APIs · JWT · HTML/CSS/JavaScript · Chart.js**
 
@@ -37,22 +43,24 @@ git clone https://github.com/tejashr0716/fleet.git
 cd fleet
 python scripts/doctor.py
 python scripts/setup.py
-docker compose --profile demo up --build -d
+docker compose up --build -d
 ```
 
 If your machine uses `python3`, use that instead of `python`.
 
 1. Open **http://localhost:8000/static/index.html**.
-2. The initial screen is explicitly a browser simulation. Click **Connect live API**.
-3. Backend origin: `http://localhost:8000`. Username and password: `ADMIN_USERNAME` / `ADMIN_PASSWORD` from your local `.env` file.
-4. Confirm **Connected live API**. The Python simulator submits 12 vehicles every second; the worker delivers committed events to Redis and the API's authenticated WebSocket.
-5. Open **http://localhost:8000/docs** to inspect the actual REST contract.
+2. Click **Connect live API**; origin `http://localhost:8000`, credentials from your local `.env`.
+3. Register your vehicle, start a simulated trip, watch updates, finish, then review it.
+4. Reload and sign in again to demonstrate durable completed-trip history.
+5. Open **http://localhost:8000/docs** for the REST contract.
+
+The per-vehicle Python generator starts only when you start a trip. The optional old `--profile demo` simulator and `/demo/*` endpoints remain for compatibility; do not run that fleet-wide simulator during the new trip workflow.
 
 `setup.py` creates random credentials once and never overwrites an existing `.env`. Do not commit that file or paste its contents into chat. Defaults in `.env.example` are conspicuous local-demo placeholders, not production credentials.
 
 ```bash
-docker compose logs -f api worker simulator
-docker compose --profile demo down
+docker compose logs -f api worker
+docker compose down
 ```
 
 Stopping preserves PostgreSQL and Redis volumes. **Do not add `-v` unless you deliberately want to delete your local demo data.** The rebuild stores its tables under `fleet_v2`; it does not drop old prototype tables in `public`.
@@ -70,7 +78,9 @@ python -m simulator.seed
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 # Separate terminals, with the same environment:
 python -m workers.position_consumer
-python -m simulator.run --trigger-alerts
+# Start trips from the dashboard; no always-moving simulator is needed.
+# Optional legacy fixture generator (not during managed trips):
+# python -m simulator.run --trigger-alerts
 ```
 
 ## Preview without backend dependencies
@@ -99,18 +109,20 @@ Use your own OS path syntax. Review `git diff`, commit and publish the branch th
 **Validate/authenticate a GPS batch → atomically commit positions plus outbox events in PostgreSQL → retry Redis cache/GEO/PubSub handoff in a worker → fan out to authenticated WebSockets, with REST snapshot reconciliation.**
 
 ```text
-Python GPS simulator --authenticated HTTP--> FastAPI /positions/batch
-                                              |
-                               PostgreSQL transaction
-                                positions + alerts + outbox
-                                              |
-                                  Outbox worker (retry)
-                                              |
-                         Redis latest cache + GEO + Pub/Sub
-                                              |
-                              FastAPI bounded WebSocket queues
-                                              |
-                               Browser map + Chart.js history
+Browser --JWT--> start/finish trip REST routes --> TripRunner (synthetic Python GPS)
+                                                      |
+External device --API key--> /positions/batch --> shared Pydantic/ingestion path
+                                                      |
+                                       PostgreSQL transaction
+                                  positions + trip alerts + outbox
+                                                      |
+                                          Outbox worker (retry)
+                                                      |
+                                 Redis latest cache + GEO + Pub/Sub
+                                                      |
+                                      Authenticated WebSockets
+                                                      |
+                                  Browser map + trip review/chart
 ```
 
 A `202` response means PostgreSQL committed and realtime handoff is queued. It does **not** promise that every browser already received the event.
@@ -126,7 +138,12 @@ A `202` response means PostgreSQL committed and realtime handoff is queued. It d
 | `GET /api/v1/fleet/live` | Current PostgreSQL snapshot | Bearer JWT |
 | `GET /api/v1/fleet/nearest` | Fresh nearest vehicles within 25 km | Bearer JWT |
 | `GET /api/v1/vehicles/{id}/positions` | Bounded, UTC history window | Bearer JWT |
-| `GET /api/v1/vehicles/{id}/trips` | Derived trace sessions, not inferred business trips | Bearer JWT |
+| `POST /api/v1/vehicles/{id}/trips` | Start an explicit bounded simulated trip | Bearer JWT |
+| `GET /api/v1/vehicles/{id}/trips` | Saved explicit trips for a vehicle | Bearer JWT |
+| `GET /api/v1/trips` | Recent explicit trips | Bearer JWT |
+| `GET /api/v1/trips/{id}` | Trip route, synthetic samples, alerts and summary | Bearer JWT |
+| `POST /api/v1/trips/{id}/finish` | Stop generation and durably finish; idempotent | Bearer JWT |
+| `GET /api/v1/vehicles/{id}/trace-sessions` | Legacy gap-derived sessions, separate from managed trips | Bearer JWT |
 | `GET / POST /api/v1/geofences` | Circular geofences | Bearer JWT |
 | `GET /api/v1/alerts` | Persisted speeding / geofence transitions | Bearer JWT |
 | `GET /api/v1/health` | Dependency health and pending outbox count | Public; no vehicle data |
@@ -187,3 +204,20 @@ Use [resume evidence](docs/resume-evidence.md) only after running, reviewing and
 ## Optional temporary free-tier cloud demo
 
 Version 2.1 adds an optional one-service API/worker runner and an authenticated, time-limited **Start sample GPS** control. The normal Docker workflow is unchanged. This is a temporary demonstration, not always-on production hosting. See [the complete Render free-demo guide](docs/render-free-demo.md), including the 30-day database expiration and shared usage/billing limits. Resource provisioning and billing controls must be confirmed separately; a prepared configuration does not mean a live backend has been deployed.
+
+## Explicit trip lifecycle and checks
+
+The forward `fleet_v3_002` migration adds `trips`, nullable trip links on positions/alerts, and a sample-vehicle flag. It preserves earlier vehicles, GPS history, alerts and outbox events. A partial unique index enforces one active trip per vehicle. Vehicle locking coordinates ingestion and finish; restart recovery marks abandoned simulated trips interrupted.
+
+Frontend checks:
+
+```bash
+npm ci
+npm run test:preview
+npx playwright install chromium
+npm run test:ui
+```
+
+CI runs Python tests against real PostgreSQL/Redis, pure preview-store tests, and browser workflow/contract tests. Mocked UI checks are not evidence of a deployed backend. Earlier v2.1 reports are historical; see `reports/README.md` for the scope of each report.
+
+The in-process trip generator supports one API process; persistent scheduling, real device assignment, multi-tenant accounts and road routing are outside this demo's scope.

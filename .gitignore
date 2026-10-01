@@ -12,3 +12,7 @@ htmlcov/
 reports/*.json
 !reports/validation.json
 !reports/README.md
+
+node_modules/
+test-results/
+playwright-report/
